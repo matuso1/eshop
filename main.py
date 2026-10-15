@@ -31,6 +31,17 @@ def init_db():
             discount_percent REAL NOT NULL
         )
     """)
+    
+    # Predvolené produkty, ak je tabuľka prázdna
+    cursor.execute("SELECT COUNT(*) FROM products")
+    if cursor.fetchone()[0] == 0:
+        default_products = [
+            ("Jablko", 0.50, 10, 0),
+            ("Banán", 1.20, 15, 5),
+            ("Tričko", 19.99, 5, 10)
+        ]
+        cursor.executemany("INSERT INTO products (name, price, stock, discount) VALUES (?, ?, ?, ?)", default_products)
+
     conn.commit()
     conn.close()
 
@@ -67,16 +78,13 @@ def add_to_cart(product_id: int, cart: str = Cookie(None)):
     conn = sqlite3.connect("database.db")
     cursor = conn.cursor()
     
-    # Skontrolujeme aktuálny stav skladu
     cursor.execute("SELECT stock FROM products WHERE id = ?", (product_id,))
     row = cursor.fetchone()
     
     if row and row[0] > 0:
-        # Zmenšime sklad o 1
         cursor.execute("UPDATE products SET stock = stock - 1 WHERE id = ?", (product_id,))
         conn.commit()
         
-        # Pridáme do košíka
         cart_items = json.loads(cart) if cart else {}
         str_id = str(product_id)
         cart_items[str_id] = cart_items.get(str_id, 0) + 1
@@ -84,7 +92,6 @@ def add_to_cart(product_id: int, cart: str = Cookie(None)):
         response = RedirectResponse(url="/", status_code=303)
         response.set_cookie(key="cart", value=json.dumps(cart_items))
     else:
-        # Sklad je 0, nič nepridáme
         response = RedirectResponse(url="/", status_code=303)
         
     conn.close()
@@ -167,7 +174,6 @@ def remove_coupon():
 
 @app.get("/cart/clear")
 def clear_cart(cart: str = Cookie(None)):
-    # Ak vyprázdnime košík, vrátime tovar späť do skladu
     if cart:
         cart_items = json.loads(cart)
         conn = sqlite3.connect("database.db")
@@ -193,20 +199,12 @@ def admin_page(request: Request, username: str = Depends(verify_credentials)):
     conn.close()
     return templates.TemplateResponse(request, "admin.html", context={"products": products, "coupons": coupons})
 
-@app.post("/admin/add-product")
-def add_product(
-    name: str = Form(...),
-    price: float = Form(...),
-    stock: int = Form(...),
-    discount: float = Form(0.0),
-    username: str = Depends(verify_credentials)
-):
+# Doskladnenie existujúceho produktu (+1 ks)
+@app.post("/admin/restock/{product_id}")
+def restock_product(product_id: int, username: str = Depends(verify_credentials)):
     conn = sqlite3.connect("database.db")
     cursor = conn.cursor()
-    cursor.execute(
-        "INSERT INTO products (name, price, stock, discount) VALUES (?, ?, ?, ?)",
-        (name, price, stock, discount)
-    )
+    cursor.execute("UPDATE products SET stock = stock + 1 WHERE id = ?", (product_id,))
     conn.commit()
     conn.close()
     return RedirectResponse(url="/admin", status_code=303)
@@ -222,10 +220,4 @@ def add_coupon(
     try:
         cursor.execute(
             "INSERT INTO coupons (code, discount_percent) VALUES (?, ?)",
-            (code.strip().upper(), discount_percent)
-        )
-        conn.commit()
-    except sqlite3.IntegrityError:
-        pass
-    conn.close()
-    return RedirectResponse(url="/admin", status_code=303)
+            (code.strip().upper
