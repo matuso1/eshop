@@ -64,12 +64,30 @@ def read_root(request: Request, cart: str = Cookie(None)):
 
 @app.post("/cart/add/{product_id}")
 def add_to_cart(product_id: int, cart: str = Cookie(None)):
-    cart_items = json.loads(cart) if cart else {}
-    str_id = str(product_id)
-    cart_items[str_id] = cart_items.get(str_id, 0) + 1
+    conn = sqlite3.connect("database.db")
+    cursor = conn.cursor()
     
-    response = RedirectResponse(url="/", status_code=303)
-    response.set_cookie(key="cart", value=json.dumps(cart_items))
+    # Skontrolujeme aktuálny stav skladu
+    cursor.execute("SELECT stock FROM products WHERE id = ?", (product_id,))
+    row = cursor.fetchone()
+    
+    if row and row[0] > 0:
+        # Zmenšime sklad o 1
+        cursor.execute("UPDATE products SET stock = stock - 1 WHERE id = ?", (product_id,))
+        conn.commit()
+        
+        # Pridáme do košíka
+        cart_items = json.loads(cart) if cart else {}
+        str_id = str(product_id)
+        cart_items[str_id] = cart_items.get(str_id, 0) + 1
+        
+        response = RedirectResponse(url="/", status_code=303)
+        response.set_cookie(key="cart", value=json.dumps(cart_items))
+    else:
+        # Sklad je 0, nič nepridáme
+        response = RedirectResponse(url="/", status_code=303)
+        
+    conn.close()
     return response
 
 @app.get("/cart")
@@ -148,7 +166,17 @@ def remove_coupon():
     return response
 
 @app.get("/cart/clear")
-def clear_cart():
+def clear_cart(cart: str = Cookie(None)):
+    # Ak vyprázdnime košík, vrátime tovar späť do skladu
+    if cart:
+        cart_items = json.loads(cart)
+        conn = sqlite3.connect("database.db")
+        cursor = conn.cursor()
+        for str_id, quantity in cart_items.items():
+            cursor.execute("UPDATE products SET stock = stock + ? WHERE id = ?", (quantity, int(str_id)))
+        conn.commit()
+        conn.close()
+
     response = RedirectResponse(url="/cart", status_code=303)
     response.delete_cookie(key="cart")
     response.delete_cookie(key="applied_coupon")
