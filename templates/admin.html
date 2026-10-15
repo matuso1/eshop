@@ -12,12 +12,12 @@
         button { background: #27ae60; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; }
         button:hover { background: #219653; }
         .product-row { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #eee; padding: 10px 0; }
+        ul { padding-left: 20px; }
     </style>
 </head>
 <body>
     <h1>Administrácia e-shopu</h1>
 
-    <!-- Správa skladu (doskladnenie) -->
     <div class="section">
         <h3>Sklad produktov (Doskladnenie)</h3>
         {% if products %}
@@ -37,17 +37,16 @@
         {% endif %}
     </div>
 
-    <!-- Vytvorenie kupónu (bez predvolených príkladov) -->
     <div class="section">
         <h3>Vytvoriť zľavový kupón</h3>
         <form action="/admin/add-coupon" method="POST">
             <div>
                 <label>Kód kupónu:</label>
-                <input type="text" name="code" placeholder="Zadajte kód (napr. ZLAVA)" required>
+                <input type="text" name="code" placeholder="Zadajte kód" required>
             </div>
             <div>
                 <label>Zľava (%):</label>
-                <input type="number" step="0.01" name="discount_percent" placeholder="Zadajte percento zľavy" required>
+                <input type="number" step="0.01" name="discount_percent" placeholder="Zadajte percento" required>
             </div>
             <button type="submit" style="background: #8e44ad;">Vytvoriť kupón</button>
         </form>
