@@ -32,7 +32,6 @@ def init_db():
         )
     """)
     
-    # Predvolené produkty, ak je tabuľka prázdna
     cursor.execute("SELECT COUNT(*) FROM products")
     if cursor.fetchone()[0] == 0:
         default_products = [
@@ -52,7 +51,7 @@ def verify_credentials(credentials: HTTPBasicCredentials = Depends(security)):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Nesprávne prihlasovacie údaje",
-            headers={"WWW-Authenticate": "Basic"},
+            headers={"WWW-Authenticate": "Basic"}
         )
     return credentials.username
 
@@ -106,118 +105,3 @@ def view_cart(request: Request, cart: str = Cookie(None), applied_coupon: str = 
     
     products_in_cart = []
     subtotal = 0
-    
-    for str_id, quantity in cart_items.items():
-        cursor.execute("SELECT id, name, price, stock, discount FROM products WHERE id = ?", (int(str_id),))
-        row = cursor.fetchone()
-        if row:
-            prod_id, name, price, stock, discount = row
-            final_item_price = price * (1 - discount / 100)
-            item_total = final_item_price * quantity
-            subtotal += item_total
-            
-            products_in_cart.append({
-                "id": prod_id,
-                "name": name,
-                "price": price,
-                "discount": discount,
-                "final_item_price": final_item_price,
-                "quantity": quantity,
-                "item_total": item_total
-            })
-            
-    coupon_discount = 0
-    if applied_coupon:
-        cursor.execute("SELECT discount_percent FROM coupons WHERE code = ?", (applied_coupon.upper(),))
-        row = cursor.fetchone()
-        if row:
-            coupon_discount = row[0]
-            
-    conn.close()
-    
-    total = subtotal * (1 - coupon_discount / 100)
-    cart_count = sum(cart_items.values())
-    
-    return templates.TemplateResponse(
-        request,
-        "cart.html",
-        context={
-            "products_in_cart": products_in_cart,
-            "subtotal": subtotal,
-            "coupon_discount": coupon_discount,
-            "applied_coupon": applied_coupon,
-            "total": total,
-            "cart_count": cart_count
-        }
-    )
-
-@app.post("/cart/apply-coupon")
-def apply_coupon(coupon_code: str = Form(...)):
-    conn = sqlite3.connect("database.db")
-    cursor = conn.cursor()
-    cursor.execute("SELECT discount_percent FROM coupons WHERE code = ?", (coupon_code.strip().upper(),))
-    row = cursor.fetchone()
-    conn.close()
-    
-    response = RedirectResponse(url="/cart", status_code=303)
-    if row:
-        response.set_cookie(key="applied_coupon", value=coupon_code.strip().upper())
-    else:
-        response.delete_cookie(key="applied_coupon")
-    return response
-
-@app.get("/cart/remove-coupon")
-def remove_coupon():
-    response = RedirectResponse(url="/cart", status_code=303)
-    response.delete_cookie(key="applied_coupon")
-    return response
-
-@app.get("/cart/clear")
-def clear_cart(cart: str = Cookie(None)):
-    if cart:
-        cart_items = json.loads(cart)
-        conn = sqlite3.connect("database.db")
-        cursor = conn.cursor()
-        for str_id, quantity in cart_items.items():
-            cursor.execute("UPDATE products SET stock = stock + ? WHERE id = ?", (quantity, int(str_id)))
-        conn.commit()
-        conn.close()
-
-    response = RedirectResponse(url="/cart", status_code=303)
-    response.delete_cookie(key="cart")
-    response.delete_cookie(key="applied_coupon")
-    return response
-
-@app.get("/admin")
-def admin_page(request: Request, username: str = Depends(verify_credentials)):
-    conn = sqlite3.connect("database.db")
-    cursor = conn.cursor()
-    cursor.execute("SELECT id, name, price, stock, discount FROM products")
-    products = cursor.fetchall()
-    cursor.execute("SELECT id, code, discount_percent FROM coupons")
-    coupons = cursor.fetchall()
-    conn.close()
-    return templates.TemplateResponse(request, "admin.html", context={"products": products, "coupons": coupons})
-
-# Doskladnenie existujúceho produktu (+1 ks)
-@app.post("/admin/restock/{product_id}")
-def restock_product(product_id: int, username: str = Depends(verify_credentials)):
-    conn = sqlite3.connect("database.db")
-    cursor = conn.cursor()
-    cursor.execute("UPDATE products SET stock = stock + 1 WHERE id = ?", (product_id,))
-    conn.commit()
-    conn.close()
-    return RedirectResponse(url="/admin", status_code=303)
-
-@app.post("/admin/add-coupon")
-def add_coupon(
-    code: str = Form(...),
-    discount_percent: float = Form(...),
-    username: str = Depends(verify_credentials)
-):
-    conn = sqlite3.connect("database.db")
-    cursor = conn.cursor()
-    try:
-        cursor.execute(
-            "INSERT INTO coupons (code, discount_percent) VALUES (?, ?)",
-            (code.strip().upper
