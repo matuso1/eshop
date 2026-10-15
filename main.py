@@ -8,7 +8,7 @@ from fastapi.responses import RedirectResponse
 app = FastAPI()
 security = HTTPBasic()
 
-# Nastavenie šablón
+# Nastavenie šablón (absolútna cesta pre Render)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
 
@@ -30,7 +30,7 @@ def init_db():
 
 init_db()
 
-# Overenie admina
+# Overenie admina (Meno: admin, Heslo: matus123)
 def verify_credentials(credentials: HTTPBasicCredentials = Depends(security)):
     if credentials.username != "admin" or credentials.password != "matus123":
         raise HTTPException(
@@ -48,14 +48,14 @@ def read_root(request: Request):
     cursor.execute("SELECT id, name, price, stock, discount FROM products")
     products = cursor.fetchall()
     conn.close()
-    return templates.TemplateResponse("index.html", {"request": request, "products": products})
+    return templates.TemplateResponse(request, "index.html", context={"products": products})
 
 # Stránka administrácie (vyžaduje prihlásenie)
 @app.get("/admin")
 def admin_page(request: Request, username: str = Depends(verify_credentials)):
-    return templates.TemplateResponse("admin.html", {"request": request})
+    return templates.TemplateResponse(request, "admin.html")
 
-# Spracovanie pridania produktu vrátane zľavy
+# Spracowanie pridania produktu vrátane zľavy
 @app.post("/admin/add-product")
 def add_product(
     name: str = Form(...),
