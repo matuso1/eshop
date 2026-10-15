@@ -2,35 +2,39 @@
 <html lang="sk">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Môj E-shop</title>
     <style>
         body { font-family: Arial, sans-serif; margin: 40px; background-color: #f9f9f9; color: #333; }
-        h1 { color: #2c3e50; }
         .product-card { background: white; padding: 20px; margin-bottom: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-        .admin-link { display: inline-block; margin-top: 20px; text-decoration: none; background: #2980b9; color: white; padding: 10px 15px; border-radius: 5px; }
-        .admin-link:hover { background: #1abc9c; }
+        .old-price { text-decoration: line-through; color: #888; }
+        .discount-badge { background: #e74c3c; color: white; padding: 3px 8px; border-radius: 4px; font-size: 12px; }
+        .admin-link { display: inline-block; margin-top: 20px; background: #2980b9; color: white; padding: 10px 15px; border-radius: 5px; text-decoration: none; }
     </style>
 </head>
 <body>
     <h1>Vitajte v mojom e-shope!</h1>
-    <p>Vyberte si z našej ponuky produktov:</p>
-
-    <!-- Zoznam produktov (ak nejaké sú v databáze) -->
-    <div id="products-list">
-        {% if products %}
-            {% for product in products %}
-                <div class="product-card">
-                    <h3>{{ product[1] }}</h3>
+    
+    {% if products %}
+        {% for product in products %}
+            <div class="product-card">
+                <h3>{{ product[1] }}</h3>
+                
+                {% if product[4] > 0 %}
+                    <p>Cena: <span class="old-price">{{ product[2] }} €</span> 
+                       <strong>{{ "%.2f"|format(product[2] * (1 - product[4]/100)) }} €</strong>
+                       <span class="discount-badge">-{{ product[4] }}%</span>
+                    </p>
+                {% else %}
                     <p>Cena: <strong>{{ product[2] }} €</strong></p>
-                    <p>Skladom: {{ product[3] }} ks</p>
-                </div>
-            {% endfor %}
-        {% else %}
-            <p>Zatiaľ nie sú pridané žiadne produkty.</p>
-        {% endif %}
-    </div>
+                {% endif %}
+                
+                <p>Skladom: {{ product[3] }} ks</p>
+            </div>
+        {% endfor %}
+    {% else %}
+        <p>Zatiaľ žiadne produkty.</p>
+    {% endif %}
 
-    <a href="/admin" class="admin-link">Prejsť do administrácie (Sklad)</a>
+    <a href="/admin" class="admin-link">Prejsť do administrácie</a>
 </body>
 </html>
