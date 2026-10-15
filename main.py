@@ -45,7 +45,6 @@ def verify_credentials(credentials: HTTPBasicCredentials = Depends(security)):
         )
     return credentials.username
 
-# Hlavná stránka (zoznam produktov pre zákazníka)
 @app.get("/")
 def read_root(request: Request, cart: str = Cookie(None)):
     conn = sqlite3.connect("database.db")
@@ -54,7 +53,6 @@ def read_root(request: Request, cart: str = Cookie(None)):
     products = cursor.fetchall()
     conn.close()
     
-    # Spočítaj koľko položiek je v košíku
     cart_items = json.loads(cart) if cart else {}
     cart_count = sum(cart_items.values())
     
@@ -64,12 +62,9 @@ def read_root(request: Request, cart: str = Cookie(None)):
         context={"products": products, "cart_count": cart_count}
     )
 
-# Pridanie produktu do košíka (pomocou cookie)
 @app.post("/cart/add/{product_id}")
 def add_to_cart(product_id: int, cart: str = Cookie(None)):
     cart_items = json.loads(cart) if cart else {}
-    
-    # Zvýš množstvo v košíku
     str_id = str(product_id)
     cart_items[str_id] = cart_items.get(str_id, 0) + 1
     
@@ -77,7 +72,6 @@ def add_to_cart(product_id: int, cart: str = Cookie(None)):
     response.set_cookie(key="cart", value=json.dumps(cart_items))
     return response
 
-# Zobrazenie košíka a aplikovanie kupónu
 @app.get("/cart")
 def view_cart(request: Request, cart: str = Cookie(None), applied_coupon: str = Cookie(None)):
     cart_items = json.loads(cart) if cart else {}
@@ -107,7 +101,6 @@ def view_cart(request: Request, cart: str = Cookie(None), applied_coupon: str = 
                 "item_total": item_total
             })
             
-    # Overenie kupónu
     coupon_discount = 0
     if applied_coupon:
         cursor.execute("SELECT discount_percent FROM coupons WHERE code = ?", (applied_coupon.upper(),))
@@ -133,7 +126,6 @@ def view_cart(request: Request, cart: str = Cookie(None), applied_coupon: str = 
         }
     )
 
-# Aplikovanie kupónu v košíku
 @app.post("/cart/apply-coupon")
 def apply_coupon(coupon_code: str = Form(...)):
     conn = sqlite3.connect("database.db")
@@ -155,7 +147,6 @@ def remove_coupon():
     response.delete_cookie(key="applied_coupon")
     return response
 
-# Vyprázdnenie košíka
 @app.get("/cart/clear")
 def clear_cart():
     response = RedirectResponse(url="/cart", status_code=303)
@@ -163,7 +154,6 @@ def clear_cart():
     response.delete_cookie(key="applied_coupon")
     return response
 
-# Administrácia
 @app.get("/admin")
 def admin_page(request: Request, username: str = Depends(verify_credentials)):
     conn = sqlite3.connect("database.db")
@@ -204,4 +194,10 @@ def add_coupon(
     try:
         cursor.execute(
             "INSERT INTO coupons (code, discount_percent) VALUES (?, ?)",
-            (code.strip().upper
+            (code.strip().upper(), discount_percent)
+        )
+        conn.commit()
+    except sqlite3.IntegrityError:
+        pass
+    conn.close()
+    return RedirectResponse(url="/admin", status_code=303)
