@@ -1,10 +1,10 @@
 import os
 import sqlite3
+import json
 from fastapi import FastAPI, Depends, HTTPException, Request, Form, status, Cookie
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import RedirectResponse
-import json
 
 app = FastAPI()
 security = HTTPBasic()
@@ -67,8 +67,8 @@ def read_root(request: Request, cart: str = Cookie(None)):
     cart_count = sum(cart_items.values())
     
     return templates.TemplateResponse(
-        request, 
-        "index.html", 
+        request=request, 
+        name="index.html", 
         context={"products": products, "cart_count": cart_count}
     )
 
@@ -104,4 +104,52 @@ def view_cart(request: Request, cart: str = Cookie(None), applied_coupon: str = 
     cursor = conn.cursor()
     
     products_in_cart = []
-    subtotal = 0
+    subtotal = 0.0
+    
+    for str_id, quantity in cart_items.items():
+        cursor.execute("SELECT id, name, price, stock, discount FROM products WHERE id = ?", (int(str_id),))
+        row = cursor.fetchone()
+        if row:
+            prod_id, name, price, stock, discount = row
+            final_item_price = price * (1.0 - discount / 100.0)
+            item_total = final_item_price * quantity
+            subtotal += item_total
+            
+            products_in_cart.append({
+                "id": prod_id,
+                "name": name,
+                "price": price,
+                "discount": discount,
+                "final_item_price": final_item_price,
+                "quantity": quantity,
+                "item_total": item_total
+            })
+            
+    coupon_discount = 0.0
+    if applied_coupon:
+        cursor.execute("SELECT discount_percent FROM coupons WHERE code = ?", (applied_coupon.upper(),))
+        row = cursor.fetchone()
+        if row:
+            coupon_discount = float(row[0])
+            
+    conn.close()
+    
+    total = subtotal * (1.0 - coupon_discount / 100.0)
+    cart_count = sum(cart_items.values())
+    
+    return templates.TemplateResponse(
+        request=request,
+        name="cart.html",
+        context={
+            "products_in_cart": products_in_cart,
+            "subtotal": subtotal,
+            "coupon_discount": coupon_discount,
+            "applied_coupon": applied_coupon,
+            "total": total,
+            "cart_count": cart_count
+        }
+    )
+
+@app.post("/cart/apply-coupon")
+def apply_coupon(coupon_code: str = Form(...)):
+    conn
