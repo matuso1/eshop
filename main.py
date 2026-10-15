@@ -152,4 +152,60 @@ def view_cart(request: Request, cart: str = Cookie(None), applied_coupon: str = 
 
 @app.post("/cart/apply-coupon")
 def apply_coupon(coupon_code: str = Form(...)):
-    conn
+    conn = sqlite3.connect("database.db")
+    cursor = conn.cursor()
+    cursor.execute("SELECT discount_percent FROM coupons WHERE code = ?", (coupon_code.strip().upper(),))
+    row = cursor.fetchone()
+    conn.close()
+    
+    response = RedirectResponse(url="/cart", status_code=303)
+    if row:
+        response.set_cookie(key="applied_coupon", value=coupon_code.strip().upper())
+    else:
+        response.delete_cookie(key="applied_coupon")
+    return response
+
+@app.get("/cart/remove-coupon")
+def remove_coupon():
+    response = RedirectResponse(url="/cart", status_code=303)
+    response.delete_cookie(key="applied_coupon")
+    return response
+
+@app.get("/cart/clear")
+def clear_cart(cart: str = Cookie(None)):
+    if cart:
+        try:
+            cart_items = json.loads(cart)
+            conn = sqlite3.connect("database.db")
+            cursor = conn.cursor()
+            for str_id, quantity in cart_items.items():
+                cursor.execute("UPDATE products SET stock = stock + ? WHERE id = ?", (quantity, int(str_id)))
+            conn.commit()
+            conn.close()
+        except Exception:
+            pass
+
+    response = RedirectResponse(url="/cart", status_code=303)
+    response.delete_cookie(key="cart")
+    response.delete_cookie(key="applied_coupon")
+    return response
+
+@app.get("/admin")
+def admin_page(request: Request, username: str = Depends(verify_credentials)):
+    conn = sqlite3.connect("database.db")
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, name, price, stock, discount FROM products")
+    products = cursor.fetchall()
+    cursor.execute("SELECT id, code, discount_percent FROM coupons")
+    coupons = cursor.fetchall()
+    conn.close()
+    
+    return templates.TemplateResponse(
+        request=request,
+        name="admin.html",
+        context={"products": products, "coupons": coupons}
+    )
+
+@app.post("/admin/restock/{product_id}")
+def rest_product_route(product_id: int, username: str = Depends(verify_credentials)):
+    conn = sqlite3.
