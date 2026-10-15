@@ -5,67 +5,54 @@
     <title>Admin - Sklad a Kupóny</title>
     <style>
         body { font-family: Arial, sans-serif; margin: 40px; background-color: #f4f6f7; color: #333; }
-        .section { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); max-width: 500px; margin-bottom: 20px; }
+        .section { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); max-width: 600px; margin-bottom: 20px; }
         div { margin-bottom: 15px; }
         label { display: block; margin-bottom: 5px; font-weight: bold; }
         input { width: 100%; padding: 8px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px; }
-        button { background: #27ae60; color: white; border: none; padding: 10px 15px; border-radius: 4px; cursor: pointer; }
+        button { background: #27ae60; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; }
         button:hover { background: #219653; }
-        ul { padding-left: 20px; }
+        .product-row { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #eee; padding: 10px 0; }
     </style>
 </head>
 <body>
-    <h1>Administrácia e-shopu (Sklad)</h1>
+    <h1>Administrácia e-shopu</h1>
 
+    <!-- Správa skladu (doskladnenie) -->
     <div class="section">
-        <h3>Pridať produkt do skladu</h3>
-        <form action="/admin/add-product" method="POST">
-            <div>
-                <label>Názov produktu:</label>
-                <input type="text" name="name" required>
-            </div>
-            <div>
-                <label>Cena (€):</label>
-                <input type="number" step="0.01" name="price" required>
-            </div>
-            <div>
-                <label>Počet na sklade:</label>
-                <input type="number" name="stock" required>
-            </div>
-            <div>
-                <label>Produktová zľava (%):</label>
-                <input type="number" step="0.01" name="discount" value="0">
-            </div>
-            <button type="submit">Pridať produkt</button>
-        </form>
-
-        <h4>Aktuálny stav skladu:</h4>
-        <ul>
-            {% if products %}
-                {% for prod in products %}
-                    <li><strong>{{ prod[1] }}</strong> - Cena: {{ prod[2] }} € | Sklad: {{ prod[3] }} ks | Zľava: {{ prod[4] }}%</li>
-                {% endfor %}
-            {% else %}
-                <li>Žiadne produkty v sklade.</li>
-            {% endif %}
-        </ul>
+        <h3>Sklad produktov (Doskladnenie)</h3>
+        {% if products %}
+            {% for prod in products %}
+                <div class="product-row">
+                    <div>
+                        <strong>{{ prod[1] }}</strong><br>
+                        <small>Cena: {{ prod[2] }} € | Skladom: <strong>{{ prod[3] }} ks</strong> | Zľava: {{ prod[4] }}%</small>
+                    </div>
+                    <form action="/admin/restock/{{ prod[0] }}" method="POST" style="margin: 0;">
+                        <button type="submit">+1 ks</button>
+                    </form>
+                </div>
+            {% endfor %}
+        {% else %}
+            <p>Žiadne produkty v sklade.</p>
+        {% endif %}
     </div>
 
+    <!-- Vytvorenie kupónu (bez predvolených príkladov) -->
     <div class="section">
         <h3>Vytvoriť zľavový kupón</h3>
         <form action="/admin/add-coupon" method="POST">
             <div>
-                <label>Kód kupónu (napr. LETO20):</label>
-                <input type="text" name="code" required>
+                <label>Kód kupónu:</label>
+                <input type="text" name="code" placeholder="Zadajte kód (napr. ZLAVA)" required>
             </div>
             <div>
                 <label>Zľava (%):</label>
-                <input type="number" step="0.01" name="discount_percent" required>
+                <input type="number" step="0.01" name="discount_percent" placeholder="Zadajte percento zľavy" required>
             </div>
             <button type="submit" style="background: #8e44ad;">Vytvoriť kupón</button>
         </form>
 
-        <h4>Aktívne kupóny:</h4>
+        <h4 style="margin-top: 20px;">Aktívne kupóny:</h4>
         <ul>
             {% if coupons %}
                 {% for coupon in coupons %}
