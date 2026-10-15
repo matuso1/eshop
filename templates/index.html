@@ -10,35 +10,53 @@
         .product-card { background: white; padding: 20px; margin-bottom: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
         .old-price { text-decoration: line-through; color: #888; }
         .discount-badge { background: #e74c3c; color: white; padding: 3px 8px; border-radius: 4px; font-size: 12px; }
-        .admin-link { display: inline-block; margin-top: 20px; background: #2980b9; color: white; padding: 10px 15px; border-radius: 5px; text-decoration: none; }
-        .admin-link:hover { background: #1abc9c; }
+        .nav-links { margin-bottom: 20px; }
+        .btn { background: #27ae60; color: white; padding: 8px 12px; border: none; border-radius: 4px; cursor: pointer; text-decoration: none; display: inline-block; }
+        .btn:hover { background: #219653; }
+        .cart-link { background: #2980b9; margin-left: 10px; }
     </style>
 </head>
 <body>
     <h1>Vitajte v mojom e-shope!</h1>
-    <p>Vyberte si z našej ponuky produktov:</p>
     
+    <div class="nav-links">
+        <a href="/cart" class="btn cart-link">🛒 Košík ({{ cart_count }})</a>
+        <a href="/admin" class="btn" style="background: #7f8c8d; margin-left: 10px;">Administrácia</a>
+    </div>
+
+    <h2>Ponuka produktov</h2>
     {% if products %}
         {% for product in products %}
             <div class="product-card">
                 <h3>{{ product[1] }}</h3>
                 
-                {% if product[4] > 0 %}
-                    <p>Cena: <span class="old-price">{{ product[2] }} €</span> 
-                       <strong>{{ "%.2f"|format(product[2] * (1 - product[4]/100)) }} €</strong>
-                       <span class="discount-badge">-{{ product[4] }}%</span>
+                {% set base_price = product[2] %}
+                {% set stock = product[3] %}
+                {% set prod_discount = product[4] %}
+                {% set final_price = base_price * (1 - prod_discount/100) %}
+                
+                {% if prod_discount > 0 %}
+                    <p>Cena: <span class="old-price">{{ "%.2f"|format(base_price) }} €</span> 
+                       <strong>{{ "%.2f"|format(final_price) }} €</strong>
+                       <span class="discount-badge">-{{ prod_discount }}%</span>
                     </p>
                 {% else %}
-                    <p>Cena: <strong>{{ product[2] }} €</strong></p>
+                    <p>Cena: <strong>{{ "%.2f"|format(base_price) }} €</strong></p>
                 {% endif %}
                 
-                <p>Skladom: {{ product[3] }} ks</p>
+                <p>Skladom: {{ stock }} ks</p>
+
+                {% if stock > 0 %}
+                    <form action="/cart/add/{{ product[0] }}" method="POST" style="margin-top: 10px;">
+                        <button type="submit" class="btn">Pridať do košíka</button>
+                    </form>
+                {% else %}
+                    <p style="color: red;">Vypredané</p>
+                {% endif %}
             </div>
         {% endfor %}
     {% else %}
         <p>Zatiaľ nie sú pridané žiadne produkty.</p>
     {% endif %}
-
-    <a href="/admin" class="admin-link">Prejsť do administrácie</a>
 </body>
 </html>
