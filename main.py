@@ -207,5 +207,29 @@ def admin_page(request: Request, username: str = Depends(verify_credentials)):
     )
 
 @app.post("/admin/restock/{product_id}")
-def rest_product_route(product_id: int, username: str = Depends(verify_credentials)):
-    conn = sqlite3.
+def restock_product(product_id: int, username: str = Depends(verify_credentials)):
+    conn = sqlite3.connect("database.db")
+    cursor = conn.cursor()
+    cursor.execute("UPDATE products SET stock = stock + 1 WHERE id = ?", (product_id,))
+    conn.commit()
+    conn.close()
+    return RedirectResponse(url="/admin", status_code=303)
+
+@app.post("/admin/add-coupon")
+def add_coupon(
+    code: str = Form(...),
+    discount_percent: float = Form(...),
+    username: str = Depends(verify_credentials)
+):
+    conn = sqlite3.connect("database.db")
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            "INSERT INTO coupons (code, discount_percent) VALUES (?, ?)",
+            (code.strip().upper(), discount_percent)
+        )
+        conn.commit()
+    except sqlite3.IntegrityError:
+        pass
+    conn.close()
+    return RedirectResponse(url="/admin", status_code=303)
