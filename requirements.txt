@@ -4,3 +4,4 @@ jinja2
 authlib
 itsdangerous
 httpx
+python-multipart
