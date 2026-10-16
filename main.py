@@ -1,13 +1,11 @@
 import os
 import sqlite3
 import json
-from fastapi import FastAPI, Depends, HTTPException, Request, Form, status, Cookie
-from fastapi.security import HTTPBasic, HTTPBasicCredentials
+from fastapi import FastAPI, Request, Form, Cookie, Response
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import RedirectResponse
 
 app = FastAPI()
-security = HTTPBasic()
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
@@ -36,14 +34,9 @@ def init_db():
 
 init_db()
 
-def verify_credentials(credentials: HTTPBasicCredentials = Depends(security)):
-    if credentials.username != "admin" or credentials.password != "matus123":
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Nesprávne prihlasovacie údaje",
-            headers={"WWW-Authenticate": "Basic"}
-        )
-    return credentials.username
+# Pomocná funkcia na overenie, či je používateľ prihlásený ako admin
+def is_admin(admin_cookie: str = Cookie(None)):
+    return admin_cookie == "true"
 
 @app.get("/")
 def read_root(request: Request, cart: str = Cookie(None)):
@@ -173,8 +166,32 @@ def clear_cart(cart: str = Cookie(None)):
     response.delete_cookie(key="applied_coupon")
     return response
 
+# --- AUTENTIFIKÁCIA A ADMIN SEKCIA ---
+
+@app.get("/login")
+def login_page(request: Request):
+    return templates.TemplateResponse(request=request, name="login.html")
+
+@app.post("/login")
+def login_submit(username: str = Form(...), password: str = Form(...)):
+    if username == "admin" and password == "matus123":
+        response = RedirectResponse(url="/admin", status_code=303)
+        response.set_cookie(key="admin_logged", value="true")
+        return response
+    else:
+        return RedirectResponse(url="/login?error=1", status_code=303)
+
+@app.get("/logout")
+def logout():
+    response = RedirectResponse(url="/", status_code=303)
+    response.delete_cookie(key="admin_logged")
+    return response
+
 @app.get("/admin")
-def admin_page(request: Request, username: str = Depends(verify_credentials)):
+def admin_page(request: Request, admin_logged: str = Cookie(None)):
+    if admin_logged != "true":
+        return RedirectResponse(url="/login", status_code=303)
+        
     with sqlite3.connect("database.db") as conn:
         cursor = conn.cursor()
         cursor.execute("SELECT id, name, price, stock, discount, image_url FROM products")
@@ -189,7 +206,10 @@ def admin_page(request: Request, username: str = Depends(verify_credentials)):
     )
 
 @app.post("/admin/restock/{product_id}")
-def restock_product(product_id: int, username: str = Depends(verify_credentials)):
+def restock_product(product_id: int, admin_logged: str = Cookie(None)):
+    if admin_logged != "true":
+        return RedirectResponse(url="/login", status_code=303)
+        
     with sqlite3.connect("database.db") as conn:
         cursor = conn.cursor()
         cursor.execute("UPDATE products SET stock = stock + 1 WHERE id = ?", (product_id,))
@@ -203,8 +223,11 @@ def add_product(
     stock: int = Form(...),
     discount: float = Form(0),
     image_url: str = Form(""),
-    username: str = Depends(verify_credentials)
+    admin_logged: str = Cookie(None)
 ):
+    if admin_logged != "true":
+        return RedirectResponse(url="/login", status_code=303)
+        
     with sqlite3.connect("database.db") as conn:
         cursor = conn.cursor()
         cursor.execute(
@@ -215,7 +238,10 @@ def add_product(
     return RedirectResponse(url="/admin", status_code=303)
 
 @app.post("/admin/delete-product/{product_id}")
-def delete_product(product_id: int, username: str = Depends(verify_credentials)):
+def delete_product(product_id: int, admin_logged: str = Cookie(None)):
+    if admin_logged != "true":
+        return RedirectResponse(url="/login", status_code=303)
+        
     with sqlite3.connect("database.db") as conn:
         cursor = conn.cursor()
         cursor.execute("DELETE FROM products WHERE id = ?", (product_id,))
@@ -226,16 +252,19 @@ def delete_product(product_id: int, username: str = Depends(verify_credentials))
 def add_coupon(
     code: str = Form(...),
     discount_percent: float = Form(...),
-    username: str = Depends(verify_credentials)
+    admin_logged: str = Cookie(None)
 ):
-    with sqlite3.connect("database.db") as conn:
-        cursor = conn.cursor()
+    if admin_logged != "true":
+        return RedirectResponse(url="/login", status_code=303)
+        
+    with sqlite3.connect("database.db") as loc_conn:
+        cursor = loc_conn.cursor()
         try:
             cursor.execute(
                 "INSERT INTO coupons (code, discount_percent) VALUES (?, ?)",
                 (code.strip().upper(), discount_percent)
             )
-            conn.commit()
+            loc_conn.commit()
         except sqlite3.IntegrityError:
             pass
     return RedirectResponse(url="/admin", status_code=303)
