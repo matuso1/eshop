@@ -172,7 +172,6 @@ def login_page(request: Request, error: str = None):
 def login_submit(username: str = Form(...), password: str = Form(...)):
     if username == "admin" and password == "matus123":
         response = RedirectResponse(url="/admin", status_code=303)
-        # Opravená cookie s povoleným prístupom a cestou
         response.set_cookie(key="admin_logged", value="true", path="/", httponly=False)
         return response
     else:
@@ -189,4 +188,79 @@ def admin_page(request: Request, admin_logged: str = Cookie(None)):
     if admin_logged != "true":
         return RedirectResponse(url="/login", status_code=303)
         
-    with sqlite3.connect("database.db
+    with sqlite3.connect("database.db") as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT id, name, price, stock, discount, image_url FROM products")
+        products = cursor.fetchall()
+        cursor.execute("SELECT id, code, discount_percent FROM coupons")
+        coupons = cursor.fetchall()
+    
+    return templates.TemplateResponse(
+        request=request,
+        name="admin.html",
+        context={"products": products, "coupons": coupons}
+    )
+
+@app.post("/admin/restock/{product_id}")
+def restock_product(product_id: int, admin_logged: str = Cookie(None)):
+    if admin_logged != "true":
+        return RedirectResponse(url="/login", status_code=303)
+        
+    with sqlite3.connect("database.db") as conn:
+        cursor = conn.cursor()
+        cursor.execute("UPDATE products SET stock = stock + 1 WHERE id = ?", (product_id,))
+        conn.commit()
+    return RedirectResponse(url="/admin", status_code=303)
+
+@app.post("/admin/add-product")
+def add_product(
+    name: str = Form(...),
+    price: float = Form(...),
+    stock: int = Form(...),
+    discount: float = Form(0),
+    image_url: str = Form(""),
+    admin_logged: str = Cookie(None)
+):
+    if admin_logged != "true":
+        return RedirectResponse(url="/login", status_code=303)
+        
+    with sqlite3.connect("database.db") as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT INTO products (name, price, stock, discount, image_url) VALUES (?, ?, ?, ?, ?)",
+            (name.strip(), price, stock, discount, image_url.strip())
+        )
+        conn.commit()
+    return RedirectResponse(url="/admin", status_code=303)
+
+@app.post("/admin/delete-product/{product_id}")
+def delete_product(product_id: int, admin_logged: str = Cookie(None)):
+    if admin_logged != "true":
+        return RedirectResponse(url="/login", status_code=303)
+        
+    with sqlite3.connect("database.db") as conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM products WHERE id = ?", (product_id,))
+        conn.commit()
+    return RedirectResponse(url="/admin", status_code=303)
+
+@app.post("/admin/add-coupon")
+def add_coupon(
+    code: str = Form(...),
+    discount_percent: float = Form(...),
+    admin_logged: str = Cookie(None)
+):
+    if admin_logged != "true":
+        return RedirectResponse(url="/login", status_code=303)
+        
+    with sqlite3.connect("database.db") as loc_conn:
+        cursor = loc_conn.cursor()
+        try:
+            cursor.execute(
+                "INSERT INTO coupons (code, discount_percent) VALUES (?, ?)",
+                (code.strip().upper(), discount_percent)
+            )
+            loc_conn.commit()
+        except sqlite3.IntegrityError:
+            pass
+    return RedirectResponse(url="/admin", status_code=303)
