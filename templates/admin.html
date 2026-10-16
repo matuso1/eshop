@@ -19,6 +19,10 @@
 </head>
 <body>
     <h1>Administrácia e-shopu</h1>
+    <div style="margin-bottom: 20px;">
+        <a href="/" style="text-decoration: none; color: #2980b9; margin-right: 15px;">← Späť do e-shopu</a>
+        <a href="/logout" style="text-decoration: none; color: #e74c3c;">Odhlásiť sa</a>
+    </div>
 
     <!-- PRIDANIE NOVÉHO PRODUKTU -->
     <div class="section">
@@ -26,15 +30,15 @@
         <form action="/admin/add-product" method="POST">
             <div class="form-group">
                 <label>Názov produktu:</label>
-                <input type="text" name="name" placeholder="napr. Hruška" required>
+                <input type="text" name="name" placeholder="napr. Tričko" required>
             </div>
             <div class="form-group">
                 <label>Cena (€):</label>
-                <input type="number" step="0.01" name="price" placeholder="napr. 1.50" required>
+                <input type="number" step="0.01" name="price" placeholder="napr. 19.99" required>
             </div>
             <div class="form-group">
                 <label>Počet kusov na sklade:</label>
-                <input type="number" name="stock" placeholder="napr. 20" required>
+                <input type="number" name="stock" placeholder="napr. 10" required>
             </div>
             <div class="form-group">
                 <label>Zľava (%):</label>
@@ -106,7 +110,5 @@
             {% endif %}
         </ul>
     </div>
-
-    <a href="/" style="text-decoration: none; color: #2980b9;">← Späť na hlavnú stránku e-shopu</a>
 </body>
 </html>
