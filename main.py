@@ -1,27 +1,30 @@
 import os
 import sqlite3
 import json
-from fastapi import FastAPI, Request, Form, Cookie
+from fastapi import FastAPI, Request, Form, Cookie, Depends, HTTPException, status
+from fastapi.security import HTTPBasic, HTTPBasicCredentials
+import secrets
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import RedirectResponse
-from authlib.integrations.starlette_client import OAuth
-from starlette.middleware.sessions import SessionMiddleware
 
 app = FastAPI()
-
-app.add_middleware(SessionMiddleware, secret_key=os.environ.get("SESSION_SECRET", "super-tajny-kluc"))
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
 
-oauth = OAuth()
-oauth.register(
-    name="google",
-    client_id=os.environ.get("GOOGLE_CLIENT_ID", ""),
-    client_secret=os.environ.get("GOOGLE_CLIENT_SECRET", ""),
-    server_metadata_url="https://accounts.google.com/.well-known/openid-configuration",
-    client_kwargs={"scope": "openid email profile"}
-)
+security = HTTPBasic()
+
+# Overenie pre admina cez vstavaný panel prehliadača
+def verify_admin(credentials: HTTPBasicCredentials = Depends(security)):
+    correct_username = secrets.compare_digest(credentials.username, "admin")
+    correct_password = secrets.compare_digest(credentials.password, "matus123")
+    if not (correct_username and correct_password):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Nesprávne meno alebo heslo",
+            headers={"WWW-Authenticate": "Basic"},
+        )
+    return credentials.username
 
 def init_db():
     with sqlite3.connect("database.db") as conn:
@@ -175,36 +178,10 @@ def clear_cart(cart: str = Cookie(None)):
     response.delete_cookie(key="applied_coupon", path="/")
     return response
 
-# --- GOOGLE OAUTH AUTENTIFIKÁCIA ---
-
-@app.get("/login")
-def login_page(request: Request):
-    return templates.TemplateResponse(request=request, name="login.html")
-
-@app.get("/auth/google")
-async def login_google(request: Request):
-    redirect_uri = request.url_for("auth_google_callback")
-    return await oauth.google.authorize_redirect(request, redirect_uri)
-
-@app.get("/auth/google/callback")
-async def auth_google_callback(request: Request):
-    token = await oauth.google.authorize_access_token(request)
-    user_info = token.get("userinfo")
-    if user_info:
-        request.session["user"] = user_info
-    return RedirectResponse(url="/admin", status_code=303)
-
-@app.get("/logout")
-def logout(request: Request):
-    request.session.pop("user", None)
-    return RedirectResponse(url="/", status_code=303)
+# --- ADMIN SEKCIA S VSTAVANÝM PANELOM ---
 
 @app.get("/admin")
-def admin_page(request: Request):
-    user = request.session.get("user")
-    if not user:
-        return RedirectResponse(url="/login", status_code=303)
-        
+def admin_page(request: Request, username: str = Depends(verify_admin)):
     with sqlite3.connect("database.db") as conn:
         cursor = conn.cursor()
         cursor.execute("SELECT id, name, price, stock, discount, image_url FROM products")
@@ -215,14 +192,11 @@ def admin_page(request: Request):
     return templates.TemplateResponse(
         request=request,
         name="admin.html",
-        context={"products": products, "coupons": coupons, "user": user}
+        context={"products": products, "coupons": coupons}
     )
 
 @app.post("/admin/restock/{product_id}")
-def restock_product(product_id: int, request: Request):
-    if not request.session.get("user"):
-        return RedirectResponse(url="/login", status_code=303)
-        
+def restock_product(product_id: int, username: str = Depends(verify_admin)):
     with sqlite3.connect("database.db") as conn:
         cursor = conn.cursor()
         cursor.execute("UPDATE products SET stock = stock + 1 WHERE id = ?", (product_id,))
@@ -231,16 +205,13 @@ def restock_product(product_id: int, request: Request):
 
 @app.post("/admin/add-product")
 def add_product(
-    request: Request,
     name: str = Form(...),
     price: float = Form(...),
     stock: int = Form(...),
     discount: float = Form(0),
-    image_url: str = Form("")
+    image_url: str = Form(""),
+    username: str = Depends(verify_admin)
 ):
-    if not request.session.get("user"):
-        return RedirectResponse(url="/login", status_code=303)
-        
     with sqlite3.connect("database.db") as conn:
         cursor = conn.cursor()
         cursor.execute(
@@ -251,10 +222,7 @@ def add_product(
     return RedirectResponse(url="/admin", status_code=303)
 
 @app.post("/admin/delete-product/{product_id}")
-def delete_product(product_id: int, request: Request):
-    if not request.session.get("user"):
-        return RedirectResponse(url="/login", status_code=303)
-        
+def delete_product(product_id: int, username: str = Depends(verify_admin)):
     with sqlite3.connect("database.db") as conn:
         cursor = conn.cursor()
         cursor.execute("DELETE FROM products WHERE id = ?", (product_id,))
@@ -263,13 +231,10 @@ def delete_product(product_id: int, request: Request):
 
 @app.post("/admin/add-coupon")
 def add_coupon(
-    request: Request,
     code: str = Form(...),
-    discount_percent: float = Form(...)
+    discount_percent: float = Form(...),
+    username: str = Depends(verify_admin)
 ):
-    if not request.session.get("user"):
-        return RedirectResponse(url="/login", status_code=303)
-        
     with sqlite3.connect("database.db") as loc_conn:
         cursor = loc_conn.cursor()
         try:
