@@ -5,53 +5,62 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Môj E-shop</title>
     <style>
-        body { font-family: Arial, sans-serif; margin: 0; padding: 0; background-color: #f9f9f9; color: #333; }
-        header { background: #333; color: white; padding: 1rem 2rem; display: flex; justify-content: space-between; align-items: center; }
-        header a { color: white; text-decoration: none; margin-left: 20px; }
-        .container { max-width: 1200px; margin: 2rem auto; padding: 0 1rem; }
-        .products-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 20px; }
-        .product-card { background: white; border: 1px solid #ddd; border-radius: 8px; padding: 15px; text-align: center; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
-        .product-card img { max-width: 100%; height: 150px; object-fit: cover; border-radius: 4px; }
-        .price { font-size: 18px; font-weight: bold; color: #27ae60; margin: 10px 0; }
-        .btn { background: #3498db; color: white; border: none; padding: 10px 15px; border-radius: 4px; cursor: pointer; text-decoration: none; display: inline-block; }
-        .btn:hover { background: #2980b9; }
-        .btn-disabled { background: #ccc; cursor: not-allowed; }
+        body { font-family: Arial, sans-serif; margin: 40px; background-color: #f9f9f9; color: #333; }
+        h1 { color: #2c3e50; }
+        .product-card { background: white; padding: 20px; margin-bottom: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); max-width: 400px; }
+        .product-img { width: 100%; height: 200px; object-fit: cover; border-radius: 4px; margin-bottom: 10px; }
+        .old-price { text-decoration: line-through; color: #888; }
+        .discount-badge { background: #e74c3c; color: white; padding: 3px 8px; border-radius: 4px; font-size: 12px; }
+        .nav-links { margin-bottom: 20px; }
+        .btn { background: #27ae60; color: white; padding: 8px 12px; border: none; border-radius: 4px; cursor: pointer; text-decoration: none; display: inline-block; }
+        .btn:hover { background: #219653; }
+        .cart-link { background: #2980b9; margin-left: 10px; }
     </style>
 </head>
 <body>
-    <header>
-        <h1>Môj E-shop</h1>
-        <nav>
-            <a href="/">Domov</a>
-            <a href="/cart">Košík ({{ cart_count }})</a>
-            <a href="/admin">Admin</a>
-        </nav>
-    </header>
+    <h1>Vitajte v mojom e-shope!</h1>
     
-    <div class="container">
-        <h2>Ponuka produktov</h2>
-        <div class="products-grid">
-            {% for prod in products %}
+    <div class="nav-links">
+        <a href="/cart" class="btn cart-link">🛒 Košík ({{ cart_count }})</a>
+        <a href="/admin" class="btn" style="background: #7f8c8d; margin-left: 10px;">Administrácia</a>
+    </div>
+
+    <h2>Ponuka produktov</h2>
+    {% if products %}
+        {% for product in products %}
             <div class="product-card">
-                {% if prod[5] %}
-                    <img src="{{ prod[5] }}" alt="{{ prod[1] }}">
-                {% else %}
-                    <div style="height: 150px; background: #eee; display: flex; align-items: center; justify-content: center; color: #999;">Bez obrázka</div>
+                {% if product[5] %}
+                    <img src="{{ product[5] }}" alt="{{ product[1] }}" class="product-img">
                 {% endif %}
-                <h3>{{ prod[1] }}</h3>
-                <div class="price">{{ prod[2] }} €</div>
-                <p>Skladom: {{ prod[3] }} ks</p>
+                <h3>{{ product[1] }}</h3>
                 
-                {% if prod[3] > 0 %}
-                    <form action="/cart/add/{{ prod[0] }}" method="POST">
+                {% set base_price = product[2] %}
+                {% set stock = product[3] %}
+                {% set prod_discount = product[4] %}
+                {% set final_price = base_price * (1 - prod_discount/100) %}
+                
+                {% if prod_discount > 0 %}
+                    <p>Cena: <span class="old-price">{{ "%.2f"|format(base_price) }} €</span> 
+                       <strong>{{ "%.2f"|format(final_price) }} €</strong>
+                       <span class="discount-badge">-{{ prod_discount }}%</span>
+                    </p>
+                {% else %}
+                    <p>Cena: <strong>{{ "%.2f"|format(base_price) }} €</strong></p>
+                {% endif %}
+                
+                <p>Skladom: {{ stock }} ks</p>
+
+                {% if stock > 0 %}
+                    <form action="/cart/add/{{ product[0] }}" method="POST" style="margin-top: 10px;">
                         <button type="submit" class="btn">Pridať do košíka</button>
                     </form>
                 {% else %}
-                    <button class="btn btn-disabled" disabled>Vypredané</button>
+                    <p style="color: red;">Vypredané</p>
                 {% endif %}
             </div>
-            {% endfor %}
-        </div>
-    </div>
+        {% endfor %}
+    {% else %}
+        <p>Zatiaľ nie sú pridané žiadne produkty. Navštívte administráciu a pridajte ich.</p>
+    {% endif %}
 </body>
 </html>
