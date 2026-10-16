@@ -169,10 +169,19 @@ def login_page(request: Request, error: str = None):
     return templates.TemplateResponse(request=request, name="login.html", context={"error": error})
 
 @app.post("/login")
-def login_submit(username: str = Form(...), password: str = Form(...)):
+def login_submit(request: Request, username: str = Form(...), password: str = Form(...)):
     if username == "admin" and password == "matus123":
         response = RedirectResponse(url="/admin", status_code=303)
-        response.set_cookie(key="admin_logged", value="true", path="/", httponly=False)
+        # Zistíme, či bežíme na HTTPS ( Render beží na https )
+        is_secure = request.url.scheme == "https"
+        response.set_cookie(
+            key="admin_logged", 
+            value="true", 
+            path="/", 
+            secure=is_secure, 
+            httponly=True, 
+            samesite="lax"
+        )
         return response
     else:
         return RedirectResponse(url="/login?error=1", status_code=303)
