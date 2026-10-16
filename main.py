@@ -162,17 +162,26 @@ def clear_cart(cart: str = Cookie(None)):
     response.delete_cookie(key="applied_coupon", path="/")
     return response
 
-# --- VÁŠ PÔVODNÝ LOGIN A ADMIN ---
+# --- OPRAVENÉ PRIHLÁSENIE S HTTPS COOKIE PODPOROU ---
 
 @app.get("/login")
 def login_page(request: Request):
     return templates.TemplateResponse(request=request, name="login.html")
 
 @app.post("/login")
-def login_submit(username: str = Form(...), password: str = Form(...)):
+def login_submit(request: Request, username: str = Form(...), password: str = Form(...)):
     if username == "admin" and password == "matus123":
         response = RedirectResponse(url="/admin", status_code=303)
-        response.set_cookie(key="admin_logged", value="true", path="/", httponly=False)
+        # Nastavíme cookie tak, aby prešla cez Render HTTPS proxy bez zablokovania
+        is_secure = request.url.scheme == "https"
+        response.set_cookie(
+            key="admin_logged", 
+            value="true", 
+            path="/", 
+            secure=is_secure, 
+            httponly=False, 
+            samesite="lax"
+        )
         return response
     else:
         return RedirectResponse(url="/login", status_code=303)
@@ -246,8 +255,8 @@ def delete_product(product_id: int, admin_logged: str = Cookie(None)):
 
 @app.post("/admin/add-coupon")
 def add_coupon(
-    code: str = Form(...),
-    discount_percent: float = Form(...),
+    code: str,
+    discount_percent: float,
     admin_logged: str = Cookie(None)
 ):
     if admin_logged != "true":
