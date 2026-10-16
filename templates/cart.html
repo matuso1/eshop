@@ -3,79 +3,129 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Košík</title>
+    <title>Admin - E-shop</title>
     <style>
         body { font-family: Arial, sans-serif; margin: 0; padding: 0; background-color: #f9f9f9; color: #333; }
-        header { background: #333; color: white; padding: 1rem 2rem; display: flex; justify-content: space-between; align-items: center; }
+        header { background: #2c3e50; color: white; padding: 1rem 2rem; display: flex; justify-content: space-between; align-items: center; }
         header a { color: white; text-decoration: none; margin-left: 20px; }
-        .container { max-width: 800px; margin: 2rem auto; padding: 0 1rem; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
-        table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
-        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }
-        .total { font-size: 20px; font-weight: bold; text-align: right; margin-top: 20px; }
-        .btn { background: #3498db; color: white; border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer; text-decoration: none; }
-        .btn-danger { background: #e74c3c; }
+        .container { max-width: 1000px; margin: 2rem auto; padding: 0 1rem; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
+        table { width: 100%; border-collapse: collapse; margin-bottom: 30px; }
+        th, td { padding: 10px; text-align: left; border-bottom: 1px solid #ddd; font-size: 14px; }
+        .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px; }
+        .form-group { margin-bottom: 15px; }
+        label { display: block; margin-bottom: 5px; font-weight: bold; font-size: 14px; }
+        input[type="text"], input[type="number"] { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
+        .btn { background: #27ae60; color: white; border: none; padding: 10px 15px; border-radius: 4px; cursor: pointer; font-weight: bold; }
+        .btn:hover { background: #219653; }
+        .btn-danger { background: #e74c3c; padding: 6px 10px; font-size: 12px; }
         .btn-danger:hover { background: #c0392b; }
-        .coupon-section { margin-top: 20px; display: flex; gap: 10px; }
+        h3 { border-bottom: 2px solid #eee; padding-bottom: 5px; margin-top: 30px; }
     </style>
 </head>
 <body>
     <header>
-        <h1>Môj E-shop</h1>
+        <h1>Admin Panel</h1>
         <nav>
-            <a href="/">Domov</a>
-            <a href="/cart">Košík ({{ cart_count }})</a>
-            <a href="/admin">Admin</a>
+            <a href="/">E-shop</a>
+            <a href="/logout" style="color: #e74c3c;">Odhlásiť sa</a>
         </nav>
     </header>
     
     <div class="container">
-        <h2>Váš nákupný košík</h2>
-        
-        {% if products_in_cart %}
+        <h2>Správa produktov</h2>
         <table>
             <thead>
                 <tr>
-                    <th>Produkt</th>
-                    <th>Cena za ks</th>
-                    <th>Množstvo</th>
-                    <th>Spolu</th>
+                    <th>ID</th>
+                    <th>Názov</th>
+                    <th>Cena</th>
+                    <th>Sklad</th>
+                    <th>Zľava (%)</th>
+                    <th>Akcie</th>
                 </tr>
             </thead>
             <tbody>
-                {% for item in products_in_cart %}
+                {% for prod in products %}
                 <tr>
-                    <td>{{ item.name }}</td>
-                    <td>{{ "%.2f"|format(item.final_item_price) }} €</td>
-                    <td>{{ item.quantity }}</td>
-                    <td>{{ "%.2f"|format(item.item_total) }} €</td>
+                    <td>{{ prod[0] }}</td>
+                    <td>{{ prod[1] }}</td>
+                    <td>{{ prod[2] }} €</td>
+                    <td>{{ prod[3] }} ks</td>
+                    <td>{{ prod[4] }}%</td>
+                    <td>
+                        <form action="/admin/restock/{{ prod[0] }}" method="POST" style="display:inline;">
+                            <button type="submit" class="btn" style="padding: 6px 10px; font-size: 12px; background: #2980b9;">+1 ks</button>
+                        </form>
+                        <form action="/admin/delete-product/{{ prod[0] }}" method="POST" style="display:inline;">
+                            <button type="submit" class="btn btn-danger">Zmazať</button>
+                        </form>
+                    </td>
                 </tr>
                 {% endfor %}
             </tbody>
         </table>
 
-        <div style="margin-bottom: 20px;">
-            <p>Medzisúčet: {{ "%.2f"|format(subtotal) }} €</p>
-            {% if applied_coupon %}
-                <p style="color: green;">Použitý kupón: <strong>{{ applied_coupon }}</strong> (zľava {{ coupon_discount }}%) 
-                <a href="/cart/remove-coupon" style="color: red; font-size: 12px; margin-left: 10px;">Odstrániť kupón</a></p>
-            {% endif %}
-            <div class="total">Celkom k úhrade: {{ "%.2f"|format(total) }} €</div>
-        </div>
-
-        <form action="/cart/apply-coupon" method="POST" class="coupon-section">
-            <input type="text" name="coupon_code" placeholder="Zadajte zľavový kód" style="padding: 8px; flex: 1; border: 1px solid #ccc; border-radius: 4px;">
-            <button type="submit" class="btn">Použiť kupón</button>
+        <h3>Pridať nový produkt</h3>
+        <form action="/admin/add-product" method="POST">
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Názov:</label>
+                    <input type="text" name="name" required>
+                </div>
+                <div class="form-group">
+                    <label>Cena (€):</label>
+                    <input type="number" step="0.01" name="price" required>
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Počet na sklade:</label>
+                    <input type="number" name="stock" required>
+                </div>
+                <div class="form-group">
+                    <label>Zľava v % (nepovinné):</label>
+                    <input type="number" step="0.1" name="discount" value="0">
+                </div>
+            </div>
+            <div class="form-group">
+                <label>URL adresa obrázka (nepovinné):</label>
+                <input type="text" name="image_url" placeholder="https://...opat.jpg">
+            </div>
+            <button type="submit" class="btn">Pridať produkt</button>
         </form>
 
-        <div style="margin-top: 20px; display: flex; justify-content: space-between;">
-            <a href="/cart/clear" class="btn btn-danger">Vyprázdniť košík</a>
-            <a href="/" class="btn">Pokračovať v nákupe</a>
-        </div>
-        
-        {% else %}
-        <p>Váš košík je prázdny.</p>
-        <a href="/" class="btn">Späť na obchod</a>
-        {% endif %}
+        <h3>Zľavové kupóny</h3>
+        <table>
+            <thead>
+                <tr>
+                    <th>Kód kupónu</th>
+                    <th>Zľava</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for coupon in coupons %}
+                <tr>
+                    <td><strong>{{ coupon[1] }}</strong></td>
+                    <td>{{ coupon[2] }}%</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+
+        <h3>Pridať nový kupón</h3>
+        <form action="/admin/add-coupon" method="POST">
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Kód kupónu (npr. LETO10):</label>
+                    <input type="text" name="code" required>
+                </div>
+                <div class="form-group">
+                    <label>Zľava v %:</label>
+                    <input type="number" step="0.1" name="discount_percent" required>
+                </div>
+            </div>
+            <button type="submit" class="btn">Vytvoriť kupón</button>
+        </form>
     </div>
 </body>
 </html>
