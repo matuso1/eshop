@@ -1,7 +1,7 @@
 import os
 import sqlite3
 import json
-from fastapi import FastAPI, Request, Cookie
+from fastapi import FastAPI, Request, Form, Cookie
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import RedirectResponse
 from authlib.integrations.starlette_client import OAuth
@@ -9,20 +9,18 @@ from starlette.middleware.sessions import SessionMiddleware
 
 app = FastAPI()
 
-# Session middleware je povinný pre OAuth, aby si pamätal stav prihlásenia
 app.add_middleware(SessionMiddleware, secret_key=os.environ.get("SESSION_SECRET", "super-tajny-kluc"))
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
 
-# Nastavenie Google OAuth (údaje si ťahá z premenných prostredia Renderu, prípadne doplňte)
 oauth = OAuth()
 oauth.register(
-    name='google',
-    client_id=os.environ.get('GOOGLE_CLIENT_ID', ''),
-    client_secret=os.environ.get('GOOGLE_CLIENT_SECRET', ''),
-    server_metadata_url='https://accounts.google.com/.well-known/openid-configuration',
-    client_kwargs={'scope': 'openid email profile'}
+    name="google",
+    client_id=os.environ.get("GOOGLE_CLIENT_ID", ""),
+    client_secret=os.environ.get("GOOGLE_CLIENT_SECRET", ""),
+    server_metadata_url="https://accounts.google.com/.well-known/openid-configuration",
+    client_kwargs={"scope": "openid email profile"}
 )
 
 def init_db():
@@ -185,27 +183,25 @@ def login_page(request: Request):
 
 @app.get("/auth/google")
 async def login_google(request: Request):
-    # Dynamicky zistí aktuálnu URL (funguje lokálne aj na Renderi)
-    redirect_uri = request.url_for('auth_google_callback')
+    redirect_uri = request.url_for("auth_google_callback")
     return await oauth.google.authorize_redirect(request, redirect_uri)
 
 @app.get("/auth/google/callback")
 async def auth_google_callback(request: Request):
     token = await oauth.google.authorize_access_token(request)
-    user_info = token.get('userinfo')
+    user_info = token.get("userinfo")
     if user_info:
-        # Tu si môžete prípadne overiť, či je to váš email, napr. user_info.get('email') == 'vas.email@gmail.com'
-        request.session['user'] = user_info
+        request.session["user"] = user_info
     return RedirectResponse(url="/admin", status_code=303)
 
 @app.get("/logout")
 def logout(request: Request):
-    request.session.pop('user', None)
+    request.session.pop("user", None)
     return RedirectResponse(url="/", status_code=303)
 
 @app.get("/admin")
 def admin_page(request: Request):
-    user = request.session.get('user')
+    user = request.session.get("user")
     if not user:
         return RedirectResponse(url="/login", status_code=303)
         
@@ -224,7 +220,7 @@ def admin_page(request: Request):
 
 @app.post("/admin/restock/{product_id}")
 def restock_product(product_id: int, request: Request):
-    if not request.session.get('user'):
+    if not request.session.get("user"):
         return RedirectResponse(url="/login", status_code=303)
         
     with sqlite3.connect("database.db") as conn:
@@ -242,7 +238,7 @@ def add_product(
     discount: float = Form(0),
     image_url: str = Form("")
 ):
-    if not request.session.get('user'):
+    if not request.session.get("user"):
         return RedirectResponse(url="/login", status_code=303)
         
     with sqlite3.connect("database.db") as conn:
@@ -256,9 +252,32 @@ def add_product(
 
 @app.post("/admin/delete-product/{product_id}")
 def delete_product(product_id: int, request: Request):
-    if not request.session.get('user'):
+    if not request.session.get("user"):
         return RedirectResponse(url="/login", status_code=303)
         
     with sqlite3.connect("database.db") as conn:
         cursor = conn.cursor()
-        cursor.execute("DELETE
+        cursor.execute("DELETE FROM products WHERE id = ?", (product_id,))
+        conn.commit()
+    return RedirectResponse(url="/admin", status_code=303)
+
+@app.post("/admin/add-coupon")
+def add_coupon(
+    request: Request,
+    code: str = Form(...),
+    discount_percent: float = Form(...)
+):
+    if not request.session.get("user"):
+        return RedirectResponse(url="/login", status_code=303)
+        
+    with sqlite3.connect("database.db") as loc_conn:
+        cursor = loc_conn.cursor()
+        try:
+            cursor.execute(
+                "INSERT INTO coupons (code, discount_percent) VALUES (?, ?)",
+                (code.strip().upper(), discount_percent)
+            )
+            loc_conn.commit()
+        except sqlite3.IntegrityError:
+            pass
+    return RedirectResponse(url="/admin", status_code=303)
