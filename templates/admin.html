@@ -2,49 +2,93 @@
 <html lang="sk">
 <head>
     <meta charset="UTF-8">
-    <title>Admin - Sklad a Kupóny</title>
+    <title>Admin - Sklad a Produkty</title>
     <style>
         body { font-family: Arial, sans-serif; margin: 40px; background-color: #f4f6f7; color: #333; }
-        .section { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); max-width: 600px; margin-bottom: 20px; }
-        div { margin-bottom: 15px; }
+        .section { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); max-width: 700px; margin-bottom: 20px; }
+        .form-group { margin-bottom: 15px; }
         label { display: block; margin-bottom: 5px; font-weight: bold; }
         input { width: 100%; padding: 8px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px; }
         button { background: #27ae60; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; }
         button:hover { background: #219653; }
-        .product-row { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #eee; padding: 10px 0; }
-        ul { padding-left: 20px; }
+        .btn-danger { background: #e74c3c; }
+        .btn-danger:hover { background: #c0392b; }
+        .product-row { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #eee; padding: 10px 0; gap: 15px; }
+        .product-thumb { width: 50px; height: 50px; object-fit: cover; border-radius: 4px; background: #eee; }
     </style>
 </head>
 <body>
     <h1>Administrácia e-shopu</h1>
 
+    <!-- PRIDANIE NOVÉHO PRODUKTU -->
     <div class="section">
-        <h3>Sklad produktov (Doskladnenie)</h3>
+        <h3>Pridať nový produkt</h3>
+        <form action="/admin/add-product" method="POST">
+            <div class="form-group">
+                <label>Názov produktu:</label>
+                <input type="text" name="name" placeholder="napr. Hruška" required>
+            </div>
+            <div class="form-group">
+                <label>Cena (€):</label>
+                <input type="number" step="0.01" name="price" placeholder="napr. 1.50" required>
+            </div>
+            <div class="form-group">
+                <label>Počet kusov na sklade:</label>
+                <input type="number" name="stock" placeholder="napr. 20" required>
+            </div>
+            <div class="form-group">
+                <label>Zľava (%):</label>
+                <input type="number" step="0.1" name="discount" value="0" min="0" max="100">
+            </div>
+            <div class="form-group">
+                <label>URL obrázka:</label>
+                <input type="url" name="image_url" placeholder="https://example.com/image.jpg">
+            </div>
+            <button type="submit">Pridať produkt</button>
+        </form>
+    </div>
+
+    <!-- SPRÁVA PRODUKTOV (SKLAD & MAZANIE) -->
+    <div class="section">
+        <h3>Správa existujúcich produktov</h3>
         {% if products %}
             {% for prod in products %}
                 <div class="product-row">
-                    <div>
+                    {% if prod[5] %}
+                        <img src="{{ prod[5] }}" class="product-thumb" alt="">
+                    {% else %}
+                        <div class="product-thumb" style="display:flex;align-items:center;justify-content:center;font-size:10px;color:#888;">Foto</div>
+                    {% endif %}
+                    
+                    <div style="flex-grow: 1;">
                         <strong>{{ prod[1] }}</strong><br>
-                        <small>Cena: {{ prod[2] }} € | Skladom: <strong>{{ prod[3] }} ks</strong> | Zľava: {{ prod[4] }}%</small>
+                        <small>Cena: {{ prod[2] }} € | Sklad: <strong>{{ prod[3] }} ks</strong> | Zľava: {{ prod[4] }}%</small>
                     </div>
-                    <form action="/admin/restock/{{ prod[0] }}" method="POST" style="margin: 0;">
-                        <button type="submit">+1 ks</button>
-                    </form>
+
+                    <div style="display: flex; gap: 5px;">
+                        <form action="/admin/restock/{{ prod[0] }}" method="POST" style="margin: 0;">
+                            <button type="submit" title="Pridať 1 ks">+</button>
+                        </form>
+                        <form action="/admin/delete-product/{{ prod[0] }}" method="POST" style="margin: 0;" onsubmit="return confirm('Naozaj chcete vymazať tento produkt?');">
+                            <button type="submit" class="btn-danger">Zmazať</button>
+                        </form>
+                    </div>
                 </div>
             {% endfor %}
         {% else %}
-            <p>Žiadne produkty v sklade.</p>
+            <p>Žiadne produkty v databáze.</p>
         {% endif %}
     </div>
 
+    <!-- SPRÁVA KUPÓNOV -->
     <div class="section">
         <h3>Vytvoriť zľavový kupón</h3>
         <form action="/admin/add-coupon" method="POST">
-            <div>
+            <div class="form-group">
                 <label>Kód kupónu:</label>
                 <input type="text" name="code" placeholder="Zadajte kód" required>
             </div>
-            <div>
+            <div class="form-group">
                 <label>Zľava (%):</label>
                 <input type="number" step="0.01" name="discount_percent" placeholder="Zadajte percento" required>
             </div>
