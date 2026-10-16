@@ -1,14 +1,29 @@
 import os
 import sqlite3
 import json
-from fastapi import FastAPI, Request, Form, Cookie
+from fastapi import FastAPI, Request, Cookie
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import RedirectResponse
+from authlib.integrations.starlette_client import OAuth
+from starlette.middleware.sessions import SessionMiddleware
 
 app = FastAPI()
 
+# Session middleware je povinný pre OAuth, aby si pamätal stav prihlásenia
+app.add_middleware(SessionMiddleware, secret_key=os.environ.get("SESSION_SECRET", "super-tajny-kluc"))
+
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
+
+# Nastavenie Google OAuth (údaje si ťahá z premenných prostredia Renderu, prípadne doplňte)
+oauth = OAuth()
+oauth.register(
+    name='google',
+    client_id=os.environ.get('GOOGLE_CLIENT_ID', ''),
+    client_secret=os.environ.get('GOOGLE_CLIENT_SECRET', ''),
+    server_metadata_url='https://accounts.google.com/.well-known/openid-configuration',
+    client_kwargs={'scope': 'openid email profile'}
+)
 
 def init_db():
     with sqlite3.connect("database.db") as conn:
@@ -162,39 +177,36 @@ def clear_cart(cart: str = Cookie(None)):
     response.delete_cookie(key="applied_coupon", path="/")
     return response
 
-# --- OPRAVENÉ PRIHLÁSENIE S HTTPS COOKIE PODPOROU ---
+# --- GOOGLE OAUTH AUTENTIFIKÁCIA ---
 
 @app.get("/login")
 def login_page(request: Request):
     return templates.TemplateResponse(request=request, name="login.html")
 
-@app.post("/login")
-def login_submit(request: Request, username: str = Form(...), password: str = Form(...)):
-    if username == "admin" and password == "matus123":
-        response = RedirectResponse(url="/admin", status_code=303)
-        # Nastavíme cookie tak, aby prešla cez Render HTTPS proxy bez zablokovania
-        is_secure = request.url.scheme == "https"
-        response.set_cookie(
-            key="admin_logged", 
-            value="true", 
-            path="/", 
-            secure=is_secure, 
-            httponly=False, 
-            samesite="lax"
-        )
-        return response
-    else:
-        return RedirectResponse(url="/login", status_code=303)
+@app.get("/auth/google")
+async def login_google(request: Request):
+    # Dynamicky zistí aktuálnu URL (funguje lokálne aj na Renderi)
+    redirect_uri = request.url_for('auth_google_callback')
+    return await oauth.google.authorize_redirect(request, redirect_uri)
+
+@app.get("/auth/google/callback")
+async def auth_google_callback(request: Request):
+    token = await oauth.google.authorize_access_token(request)
+    user_info = token.get('userinfo')
+    if user_info:
+        # Tu si môžete prípadne overiť, či je to váš email, napr. user_info.get('email') == 'vas.email@gmail.com'
+        request.session['user'] = user_info
+    return RedirectResponse(url="/admin", status_code=303)
 
 @app.get("/logout")
-def logout():
-    response = RedirectResponse(url="/", status_code=303)
-    response.delete_cookie(key="admin_logged", path="/")
-    return response
+def logout(request: Request):
+    request.session.pop('user', None)
+    return RedirectResponse(url="/", status_code=303)
 
 @app.get("/admin")
-def admin_page(request: Request, admin_logged: str = Cookie(None)):
-    if admin_logged != "true":
+def admin_page(request: Request):
+    user = request.session.get('user')
+    if not user:
         return RedirectResponse(url="/login", status_code=303)
         
     with sqlite3.connect("database.db") as conn:
@@ -207,12 +219,12 @@ def admin_page(request: Request, admin_logged: str = Cookie(None)):
     return templates.TemplateResponse(
         request=request,
         name="admin.html",
-        context={"products": products, "coupons": coupons}
+        context={"products": products, "coupons": coupons, "user": user}
     )
 
 @app.post("/admin/restock/{product_id}")
-def restock_product(product_id: int, admin_logged: str = Cookie(None)):
-    if admin_logged != "true":
+def restock_product(product_id: int, request: Request):
+    if not request.session.get('user'):
         return RedirectResponse(url="/login", status_code=303)
         
     with sqlite3.connect("database.db") as conn:
@@ -223,14 +235,14 @@ def restock_product(product_id: int, admin_logged: str = Cookie(None)):
 
 @app.post("/admin/add-product")
 def add_product(
+    request: Request,
     name: str = Form(...),
     price: float = Form(...),
     stock: int = Form(...),
     discount: float = Form(0),
-    image_url: str = Form(""),
-    admin_logged: str = Cookie(None)
+    image_url: str = Form("")
 ):
-    if admin_logged != "true":
+    if not request.session.get('user'):
         return RedirectResponse(url="/login", status_code=303)
         
     with sqlite3.connect("database.db") as conn:
@@ -243,33 +255,10 @@ def add_product(
     return RedirectResponse(url="/admin", status_code=303)
 
 @app.post("/admin/delete-product/{product_id}")
-def delete_product(product_id: int, admin_logged: str = Cookie(None)):
-    if admin_logged != "true":
+def delete_product(product_id: int, request: Request):
+    if not request.session.get('user'):
         return RedirectResponse(url="/login", status_code=303)
         
     with sqlite3.connect("database.db") as conn:
         cursor = conn.cursor()
-        cursor.execute("DELETE FROM products WHERE id = ?", (product_id,))
-        conn.commit()
-    return RedirectResponse(url="/admin", status_code=303)
-
-@app.post("/admin/add-coupon")
-def add_coupon(
-    code: str,
-    discount_percent: float,
-    admin_logged: str = Cookie(None)
-):
-    if admin_logged != "true":
-        return RedirectResponse(url="/login", status_code=303)
-        
-    with sqlite3.connect("database.db") as loc_conn:
-        cursor = loc_conn.cursor()
-        try:
-            cursor.execute(
-                "INSERT INTO coupons (code, discount_percent) VALUES (?, ?)",
-                (code.strip().upper(), discount_percent)
-            )
-            loc_conn.commit()
-        except sqlite3.IntegrityError:
-            pass
-    return RedirectResponse(url="/admin", status_code=303)
+        cursor.execute("DELETE
