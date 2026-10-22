@@ -7,8 +7,13 @@
     <style>
         body { font-family: Arial, sans-serif; max-width: 700px; margin: 40px auto; padding: 0 20px; background-color: #f9f9fb; }
         .cart-item { background: white; padding: 15px; margin-bottom: 10px; border-radius: 6px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
-        .total { background: white; padding: 20px; border-radius: 6px; font-size: 20px; font-weight: bold; text-align: right; margin-top: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+        .total-box { background: white; padding: 20px; border-radius: 6px; margin-top: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); text-align: right; }
+        .coupon-box { background: white; padding: 15px; border-radius: 6px; margin-top: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); display: flex; gap: 10px; align-items: center; }
         .btn-back { display: inline-block; margin-bottom: 20px; text-decoration: none; color: #0066cc; font-weight: bold; }
+        input[type="text"] { padding: 8px; border: 1px solid #ccc; border-radius: 4px; flex-grow: 1; margin: 0; }
+        button { padding: 8px 15px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; }
+        .btn-apply { background: #2ecc71; color: white; }
+        .btn-remove { background: #e74c3c; color: white; }
     </style>
 </head>
 <body>
@@ -21,7 +26,7 @@
             <div class="cart-item">
                 <div>
                     <h3 style="margin: 0 0 5px 0;">{{ item.product.name }}</h3>
-                    <p style="margin: 0; color: #666; font-size: 14px;">Jednotková cena: {{ "%.2f"|format(item.product.price) }} € | Množstvo: {{ item.quantity }}</p>
+                    <p style="margin: 0; color: #666; font-size: 14px;">Cena za kus: {{ "%.2f"|format(item.product.price) }} € | Množstvo: {{ item.quantity }}</p>
                 </div>
                 <div style="font-weight: bold; font-size: 16px;">
                     {{ "%.2f"|format(item.product.price * item.quantity) }} €
@@ -29,8 +34,29 @@
             </div>
         {% endfor %}
 
-        <div class="total">
-            Celková suma: <span style="color: #e74c3c;">{{ "%.2f"|format(total_price) }} €</span>
+        <!-- Sekcia pre kupóny -->
+        <div class="coupon-box">
+            {% if not coupon_code %}
+            <form action="/cart/apply-coupon" method="post" style="display: flex; width: 100%; gap: 10px;">
+                <input type="text" name="coupon_code" placeholder="Zadajte zľavový kupón" required>
+                <button type="submit" class="btn-apply">Použiť kupón</button>
+            </form>
+            {% else %}
+            <div style="display: flex; justify-content: space-between; width: 100%; align-items: center;">
+                <span>Kupón <strong>{{ coupon_code }}</strong> aplikovaný (Zľava {{ discount_percent }}%)</span>
+                <form action="/cart/remove-coupon" method="post" style="margin: 0;">
+                    <button type="submit" class="btn-remove">Zrušiť kupón</button>
+                </form>
+            </div>
+            {% endif %}
+        </div>
+
+        <div class="total-box">
+            <p style="margin: 0 0 5px 0; color: #666;">Medzisúčet: {{ "%.2f"|format(subtotal) }} €</p>
+            {% if discount_percent > 0 %}
+            <p style="margin: 0 0 5px 0; color: #2ecc71;">Zľava ({{ discount_percent }}%): -{{ "%.2f"|format(subtotal - total_price) }} €</p>
+            {% endif %}
+            <h2 style="margin: 0; font-size: 22px;">Celková suma: <span style="color: #e74c3c;">{{ "%.2f"|format(total_price) }} €</span></h2>
         </div>
     {% else %}
         <p>Váš košík je prázdny.</p>
