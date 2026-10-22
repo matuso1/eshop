@@ -54,8 +54,7 @@ class CouponDB(Base):
     code = Column(String, unique=True, index=True)
     discount_percent = Column(Float)
 
-# 🛠️ DOČASNÉ ZMAZANIE A VYTVORENIE NANOVO (Vyrieši chybu f405)
-Base.metadata.drop_all(bind=engine)
+# Vytvorenie tabuliek (bez drop_all, takže dáta už zostanú zachované!)
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI()
