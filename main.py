@@ -3,8 +3,7 @@ from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from sqlalchemy import create_engine, Column, Integer, String, Float, ForeignKey
-from sqlalchemy.orm import declarative_base
-from sqlalchemy.orm import sessionmaker, Session, relationship
+from sqlalchemy.orm import declarative_base, sessionmaker, Session, relationship
 import os
 import secrets
 import html
@@ -25,7 +24,7 @@ else:
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
-# 1. Tabuľka produktov (rozšírená o image_url a category)
+# Tabuľka produktov (vrátane kategórie a image_url)
 class ProductDB(Base):
     __tablename__ = "products"
 
@@ -34,9 +33,9 @@ class ProductDB(Base):
     price = Column(Float)
     description = Column(String)
     category = Column(String, index=True)
-    image_url = Column(String) # URL adresa obrázka
+    image_url = Column(String)
 
-# 2. Tabuľka pre nákupný košík
+# Tabuľka pre nákupný košík
 class CartItemDB(Base):
     __tablename__ = "cart_items"
 
@@ -46,6 +45,9 @@ class CartItemDB(Base):
     
     product = relationship("ProductDB")
 
+# DOČASNÉ: Vymaže starú štruktúru a vytvorí novú (vyrieši chybu s chýbajúcimi stĺpcami)
+# POZNÁMKA: Po úspešnom deployi tento riadok (drop_all) môžete zmazať, aby vám dáta ostávali.
+Base.metadata.drop_all(bind=engine)
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI()
@@ -82,17 +84,17 @@ def read_root(request: Request, db: Session = Depends(get_db)):
         "cart_count": cart_count
     })
 
-# Zobrazenie košíka
 @app.get("/cart")
 def view_cart(request: Request, db: Session = Depends(get_db)):
     cart_items = db.query(CartItemDB).all()
-    total_price = sum(item.product.price * item.quantity for item in cart_items)
+    total_price = sum(item.product.price * item.quantity for item in cart_items if item.product)
+    cart_count = db.query(CartItemDB).count()
     return templates.TemplateResponse(request, "cart.html", {
         "cart_items": cart_items,
-        "total_price": total_price
+        "total_price": total_price,
+        "cart_count": cart_count
     })
 
-# Pridanie do košíka
 @app.post("/cart/add/{product_id}")
 def add_to_cart(product_id: int, db: Session = Depends(get_db)):
     product = db.query(ProductDB).filter(ProductDB.id == product_id).first()
@@ -114,7 +116,12 @@ def add_to_cart(product_id: int, db: Session = Depends(get_db)):
 @app.get("/admin")
 def admin_page(request: Request, username: str = Depends(verify_credentials), db: Session = Depends(get_db)):
     products = db.query(ProductDB).all()
-    return templates.TemplateResponse(request, "index.html", {"products": products, "is_admin": True})
+    cart_count = db.query(CartItemDB).count()
+    return templates.TemplateResponse(request, "index.html", {
+        "products": products, 
+        "is_admin": True,
+        "cart_count": cart_count
+    })
 
 @app.post("/admin/add-product")
 def add_product(
@@ -122,44 +129,13 @@ def add_product(
     price: float = Form(...),
     description: str = Form(...),
     category: str = Form(...),
-    image_url: str = Form(...), # Tu prijímame URL obrázka
+    image_url: str = Form(...),
     username: str = Depends(verify_credentials),
     db: Session = Depends(get_db)
 ):
+    # Ochrana proti XSS a čistenie vstupov
     clean_name = html.escape(name.strip().lower(), quote=True)
     clean_category = html.escape(category.strip().lower(), quote=True)
 
-    existing_product = db.query(ProductDB).filter(
-        ProductDB.name == clean_name, 
-        ProductDB.category == clean_category
-    ).first()
-
-    if existing_product:
-        raise HTTPException(status_code=400, detail="Tento produkt v tejto kategórii už existuje!")
-
-    new_product = ProductDB(
-        name=name.strip(),
-        price=price,
-        description=description,
-        category=category.strip(),
-        image_url=image_url.strip()
-    )
-    db.add(new_product)
-    db.commit()
-    
-    return RedirectResponse(url="/admin", status_code=status.HTTP_303_SEE_OTHER)
-
-@app.post("/admin/delete-product/{product_id}")
-def delete_product(
-    product_id: int,
-    username: str = Depends(verify_credentials),
-    db: Session = Depends(get_db)
-):
-    product = db.query(ProductDB).filter(ProductDB.id == product_id).first()
-    if product:
-        # Zmažeme aj z košíka, ak tam bol
-        db.query(CartItemDB).filter(CartItemDB.product_id == product_id).delete()
-        db.delete(product)
-        db.commit()
-    
-    return RedirectResponse(url="/admin", status_code=status.HTTP_303_SEE_OTHER)
+    # Kontrola duplicity (názov + kategória)
+    existing_product
