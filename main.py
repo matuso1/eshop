@@ -24,7 +24,7 @@ else:
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
-# Tabuľka produktov (vrátane kategórie a image_url)
+# Tabuľka produktov
 class ProductDB(Base):
     __tablename__ = "products"
 
@@ -45,9 +45,7 @@ class CartItemDB(Base):
     
     product = relationship("ProductDB")
 
-# DOČASNÉ: Vymaže starú štruktúru a vytvorí novú (vyrieši chybu s chýbajúcimi stĺpcami)
-# POZNÁMKA: Po úspešnom deployi tento riadok (drop_all) môžete zmazať, aby vám dáta ostávali.
-Base.metadata.drop_all(bind=engine)
+# Vytvorenie tabuliek
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI()
@@ -133,9 +131,48 @@ def add_product(
     username: str = Depends(verify_credentials),
     db: Session = Depends(get_db)
 ):
-    # Ochrana proti XSS a čistenie vstupov
-    clean_name = html.escape(name.strip().lower(), quote=True)
-    clean_category = html.escape(category.strip().lower(), quote=True)
+    try:
+        # Ochrana proti XSS a čistenie vstupov
+        clean_name = html.escape(name.strip().lower(), quote=True)
+        clean_category = html.escape(category.strip().lower(), quote=True)
 
-    # Kontrola duplicity (názov + kategória)
-    existing_product
+        # Kontrola duplicity (názov + kategória)
+        existing_product = db.query(ProductDB).filter(
+            ProductDB.name == clean_name, 
+            ProductDB.category == clean_category
+        ).first()
+
+        if existing_product:
+            raise HTTPException(status_code=400, detail="Tento produkt v tejto kategórii už existuje!")
+
+        new_product = ProductDB(
+            name=name.strip(),
+            price=price,
+            description=description,
+            category=category.strip(),
+            image_url=image_url.strip()
+        )
+        db.add(new_product)
+        db.commit()
+        
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Chyba pri pridávaní produktu: {str(e)}")
+    
+    return RedirectResponse(url="/admin", status_code=status.HTTP_303_SEE_OTHER)
+
+@app.post("/admin/delete-product/{product_id}")
+def delete_product(
+    product_id: int,
+    username: str = Depends(verify_credentials),
+    db: Session = Depends(get_db)
+):
+    product = db.query(ProductDB).filter(ProductDB.id == product_id).first()
+    if product:
+        db.query(CartItemDB).filter(CartItemDB.product_id == product_id).delete()
+        db.delete(product)
+        db.commit()
+    
+    return RedirectResponse(url="/admin", status_code=status.HTTP_303_SEE_OTHER)
