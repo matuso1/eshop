@@ -29,14 +29,14 @@
     {% if products %}
         {% for product in products %}
             <div class="product-card">
-                {% if product[5] %}
-                    <img src="{{ product[5] }}" alt="{{ product[1] }}" class="product-img">
+                {% if product.image_url %}
+                    <img src="{{ product.image_url }}" alt="{{ product.name }}" class="product-img">
                 {% endif %}
-                <h3>{{ product[1] }}</h3>
+                <h3>{{ product.name }}</h3>
                 
-                {% set base_price = product[2] %}
-                {% set stock = product[3] %}
-                {% set prod_discount = product[4] %}
+                {% set base_price = product.price %}
+                {% set stock = product.stock %}
+                {% set prod_discount = product.discount %}
                 {% set final_price = base_price * (1 - prod_discount/100) %}
                 
                 {% if prod_discount > 0 %}
@@ -51,7 +51,7 @@
                 <p>Skladom: {{ stock }} ks</p>
 
                 {% if stock > 0 %}
-                    <form action="/cart/add/{{ product[0] }}" method="POST" style="margin-top: 10px;">
+                    <form action="/cart/add/{{ product.id }}" method="POST" style="margin-top: 10px;">
                         <button type="submit" class="btn">Pridať do košíka</button>
                     </form>
                 {% else %}
