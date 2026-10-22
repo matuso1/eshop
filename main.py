@@ -15,7 +15,6 @@ templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
 def init_db():
     conn = sqlite3.connect("database.db")
     cursor = conn.cursor()
-    # Tabuľka produktov obohatená o stĺpec image_url
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS products (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -223,6 +222,15 @@ def restock_product(product_id: int, username: str = Depends(verify_credentials)
     conn = sqlite3.connect("database.db")
     cursor = conn.cursor()
     cursor.execute("UPDATE products SET stock = stock + 1 WHERE id = ?", (product_id,))
+    conn.commit()
+    conn.close()
+    return RedirectResponse(url="/admin", status_code=303)
+
+@app.post("/admin/delete/{product_id}")
+def delete_product(product_id: int, username: str = Depends(verify_credentials)):
+    conn = sqlite3.connect("database.db")
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM products WHERE id = ?", (product_id,))
     conn.commit()
     conn.close()
     return RedirectResponse(url="/admin", status_code=303)
