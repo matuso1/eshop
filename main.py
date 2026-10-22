@@ -2,7 +2,7 @@ from fastapi import FastAPI, Depends, Request, Form, HTTPException, status
 from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
-from sqlalchemy import create_engine, Column, Integer, String, Float
+from sqlalchemy import create_engine, Column, Integer, String, Float, text
 from sqlalchemy.orm import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
 import os
@@ -18,7 +18,7 @@ if not DATABASE_URL:
 if DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
-# Vytvorenie engine s podporou pre PostgreSQL (pool_pre_ping rieši padanie spojení)
+# Vytvorenie engine
 if DATABASE_URL.startswith("sqlite"):
     engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
 else:
@@ -27,7 +27,6 @@ else:
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
-# Definícia databázovej tabuľky
 class ProductDB(Base):
     __tablename__ = "products"
 
@@ -36,8 +35,12 @@ class ProductDB(Base):
     price = Column(Float)
     description = Column(String)
 
-# Vytvorenie tabuliek
-Base.metadata.create_all(bind=engine)
+# Bezpečné vytvorenie tabuliek s kontrolou spojenia
+try:
+    Base.metadata.create_all(bind=engine)
+    print("Databáza úspešne pripojená a tabuľky vytvorené!")
+except Exception as e:
+    print(f"CHYBA PRI PRIPOJENÍ K DATABÁZE: {e}")
 
 app = FastAPI()
 templates = Jinja2Templates(directory="templates")
