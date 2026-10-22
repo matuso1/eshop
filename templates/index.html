@@ -3,64 +3,109 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Môj E-shop</title>
+    <title>E-shop</title>
     <style>
-        body { font-family: Arial, sans-serif; margin: 40px; background-color: #f9f9f9; color: #333; }
-        h1 { color: #2c3e50; }
-        .product-card { background: white; padding: 20px; margin-bottom: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); max-width: 400px; }
-        .product-img { width: 100%; height: 200px; object-fit: cover; border-radius: 4px; margin-bottom: 10px; }
-        .old-price { text-decoration: line-through; color: #888; }
-        .discount-badge { background: #e74c3c; color: white; padding: 3px 8px; border-radius: 4px; font-size: 12px; }
-        .nav-links { margin-bottom: 20px; }
-        .btn { background: #27ae60; color: white; padding: 8px 12px; border: none; border-radius: 4px; cursor: pointer; text-decoration: none; display: inline-block; }
-        .btn:hover { background: #219653; }
-        .cart-link { background: #2980b9; margin-left: 10px; }
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 40px auto;
+            padding: 0 20px;
+            background-color: #f4f4f9;
+        }
+        h1, h2 { color: #333; }
+        .product-card {
+            background: white;
+            padding: 15px;
+            margin-bottom: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .admin-box {
+            background: #eef6ff;
+            border: 2px solid #0066cc;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 30px;
+        }
+        .btn-delete {
+            background: #e74c3c;
+            color: white;
+            border: none;
+            padding: 8px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .btn-add {
+            background: #2ecc71;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        input, textarea {
+            width: 100%;
+            padding: 8px;
+            margin: 5px 0 15px 0;
+            box-sizing: border-box;
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
     </style>
 </head>
 <body>
-    <h1>Vitajte v mojom e-shope!</h1>
-    
-    <div class="nav-links">
-        <a href="/cart" class="btn cart-link">🛒 Košík ({{ cart_count }})</a>
-        <a href="/admin" class="btn" style="background: #7f8c8d; margin-left: 10px;">Administrácia</a>
+
+    <div class="header">
+        <h1>Môj E-shop</h1>
+        {% if not is_admin %}
+            <a href="/admin">Prihlásiť sa ako Admin</a>
+        {% else %}
+            <span style="color: green; font-weight: bold;">Jste prihlásený ako Admin</span> | <a href="/">Odhlásiť / Náhľad</a>
+        {% endif %}
     </div>
 
-    <h2>Ponuka produktov</h2>
+    <hr>
+
+    <!-- FORMULÁR SA ZOBRAZÍ IBA AK JE POUŽÍVATEĽ V ADMIN SEKCII -->
+    {% if is_admin %}
+    <div class="admin-box">
+        <h2>Pridať nový produkt</h2>
+        <form action="/admin/add-product" method="post">
+            <label for="name">Názov produktu:</label>
+            <input type="text" id="name" name="name" required>
+
+            <label for="price">Cena (€):</label>
+            <input type="number" step="0.01" id="price" name="price" required>
+
+            <label for="description">Popis produktu:</label>
+            <textarea id="description" name="description" rows="3" required></textarea>
+
+            <button type="submit" class="btn-add">Pridať produkt</button>
+        </form>
+    </div>
+    {% endif %}
+
+    <h2>Zoznam produktov</h2>
     {% if products %}
         {% for product in products %}
             <div class="product-card">
-                {% if product.image_url %}
-                    <img src="{{ product.image_url }}" alt="{{ product.name }}" class="product-img">
-                {% endif %}
-                <h3>{{ product.name }}</h3>
+                <h3>{{ product.name }} - {{ "%.2f"|format(product.price) }} €</h3>
+                <p>{{ product.description }}</p>
                 
-                {% set base_price = product.price %}
-                {% set stock = product.stock %}
-                {% set prod_discount = product.discount %}
-                {% set final_price = base_price * (1 - prod_discount/100) %}
-                
-                {% if prod_discount > 0 %}
-                    <p>Cena: <span class="old-price">{{ "%.2f"|format(base_price) }} €</span> 
-                       <strong>{{ "%.2f"|format(final_price) }} €</strong>
-                       <span class="discount-badge">-{{ prod_discount }}%</span>
-                    </p>
-                {% else %}
-                    <p>Cena: <strong>{{ "%.2f"|format(base_price) }} €</strong></p>
-                {% endif %}
-                
-                <p>Skladom: {{ stock }} ks</p>
-
-                {% if stock > 0 %}
-                    <form action="/cart/add/{{ product.id }}" method="POST" style="margin-top: 10px;">
-                        <button type="submit" class="btn">Pridať do košíka</button>
-                    </form>
-                {% else %}
-                    <p style="color: red;">Vypredané</p>
+                <!-- TLAČIDLO NA ZMAZANIE SA ZOBRAZÍ IBA AK JE POUŽÍVATEĽ V ADMIN SEKCII -->
+                {% if is_admin %}
+                <form action="/admin/delete-product/{{ product.id }}" method="post" style="margin-top: 10px;">
+                    <button type="submit" class="btn-delete">Zmazať produkt</button>
+                </form>
                 {% endif %}
             </div>
         {% endfor %}
     {% else %}
-        <p>Zatiaľ nie sú pridané žiadne produkty. Navštívte administráciu a pridajte ich.</p>
+        <p>Zatiaľ neboli pridané žiadne produkty.</p>
     {% endif %}
+
 </body>
 </html>
