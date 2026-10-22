@@ -8,20 +8,19 @@ from sqlalchemy import create_engine, Column, Integer, String, Float
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
 
-# 1. Načítanie a kontrola DATABASE_URL pre Render (PostgreSQL)
+# Bezpečné načítanie: Ak DATABASE_URL na Renderi chýba, nespadne, ale použije lokálny SQLite
 DATABASE_URL = os.getenv("DATABASE_URL")
-print(f"==============================")
-print(f"DEBUG DATABASE_URL: {DATABASE_URL}")
-print(f"==============================")
-
 if not DATABASE_URL:
-    raise ValueError("CHYBA: Premenná DATABASE_URL na Renderi nie je nastavená! Aplikácia nemôže bežať bez cloumovej databázy.")
+    print("POZOR: DATABASE_URL nie je nastavená, fallbackujem na SQLite.")
+    DATABASE_URL = "sqlite:///./database.db"
 
 if DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
-# Pre PostgreSQL nepotrebujeme check_same_thread
-engine = create_engine(DATABASE_URL)
+engine = create_engine(
+    DATABASE_URL, 
+    connect_args={"check_same_thread": False} if "sqlite" in DATABASE_URL else {}
+)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
@@ -234,12 +233,4 @@ def add_coupon(
     username: str = Depends(verify_credentials),
     db: Session = Depends(get_db)
 ):
-    existing = db.query(CouponDB).filter(CouponDB.code == code.strip().upper()).first()
-    if not existing:
-        new_coupon = CouponDB(
-            code=code.strip().upper(),
-            discount_percent=discount_percent
-        )
-        db.add(new_coupon)
-        db.commit()
-    return RedirectResponse(url="/admin", status_code=303)
+    existing
