@@ -35,8 +35,7 @@ class ProductDB(Base):
     price = Column(Float)
     description = Column(String)
 
-# 🛠️ DOČASNÁ OPRAVA: Zmaže starú tabuľku a vytvorí novú so stĺpcom description
-Base.metadata.drop_all(bind=engine)
+# Vytvorenie tabuliek v databáze (ak ešte neexistujú)
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI()
@@ -64,7 +63,8 @@ def verify_credentials(credentials: HTTPBasicCredentials = Depends(security)):
 @app.get("/")
 def read_root(request: Request, db: Session = Depends(get_db)):
     products = db.query(ProductDB).all()
-    return templates.TemplateResponse("index.html", {"request": request, "products": products})
+    # 🛡️ Opravený moderný zápis pre TemplateResponse (request je prvý argument)
+    return templates.TemplateResponse(request, "index.html", {"products": products})
 
 @app.post("/admin/add-product")
 def add_product(
