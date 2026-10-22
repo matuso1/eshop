@@ -1,10 +1,42 @@
 import os
-import sqlite3
 import json
 from fastapi import FastAPI, Depends, HTTPException, Request, Form, status, Cookie
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import RedirectResponse
+from sqlalchemy import create_engine, Column, Integer, String, Float
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker, Session
+
+# Automatické prepínanie: lokálne SQLite, na Renderi PostgreSQL cez DATABASE_URL
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./database.db")
+if DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+
+engine = create_engine(
+    DATABASE_URL, 
+    connect_args={"check_same_thread": False} if "sqlite" in DATABASE_URL else {}
+)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+Base = declarative_base()
+
+# Definícia tabuliek (Ochrana pred SQL Injection cez ORM)
+class ProductDB(Base):
+    __tablename__ = "products"
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    name = Column(String, nullable=False)
+    price = Column(Float, nullable=False)
+    stock = Column(Integer, nullable=False)
+    discount = Column(Float, default=0.0)
+    image_url = Column(String, default="")
+
+class CouponDB(Base):
+    __tablename__ = "coupons"
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    code = Column(String, unique=True, nullable=False, index=True)
+    discount_percent = Column(Float, nullable=False)
+
+Base.metadata.create_all(bind=engine)
 
 app = FastAPI()
 security = HTTPBasic()
@@ -12,30 +44,12 @@ security = HTTPBasic()
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
 
-def init_db():
-    conn = sqlite3.connect("database.db")
-    cursor = conn.cursor()
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS products (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL,
-            price REAL NOT NULL,
-            stock INTEGER NOT NULL,
-            discount REAL DEFAULT 0,
-            image_url TEXT DEFAULT ''
-        )
-    """)
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS coupons (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            code TEXT UNIQUE NOT NULL,
-            discount_percent REAL NOT NULL
-        )
-    """)
-    conn.commit()
-    conn.close()
-
-init_db()
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
 
 def verify_credentials(credentials: HTTPBasicCredentials = Depends(security)):
     if credentials.username != "admin" or credentials.password != "matus123":
@@ -47,12 +61,8 @@ def verify_credentials(credentials: HTTPBasicCredentials = Depends(security)):
     return credentials.username
 
 @app.get("/")
-def read_root(request: Request, cart: str = Cookie(None)):
-    conn = sqlite3.connect("database.db")
-    cursor = conn.cursor()
-    cursor.execute("SELECT id, name, price, stock, discount, image_url FROM products")
-    products = cursor.fetchall()
-    conn.close()
+def read_root(request: Request, cart: str = Cookie(None), db: Session = Depends(get_db)):
+    products = db.query(ProductDB).all()
     
     cart_items = json.loads(cart) if cart else {}
     cart_count = sum(cart_items.values())
@@ -64,16 +74,12 @@ def read_root(request: Request, cart: str = Cookie(None)):
     )
 
 @app.post("/cart/add/{product_id}")
-def add_to_cart(product_id: int, cart: str = Cookie(None)):
-    conn = sqlite3.connect("database.db")
-    cursor = conn.cursor()
+def add_to_cart(product_id: int, cart: str = Cookie(None), db: Session = Depends(get_db)):
+    product = db.query(ProductDB).filter(ProductDB.id == product_id).first()
     
-    cursor.execute("SELECT stock FROM products WHERE id = ?", (product_id,))
-    row = cursor.fetchone()
-    
-    if row and row[0] > 0:
-        cursor.execute("UPDATE products SET stock = stock - 1 WHERE id = ?", (product_id,))
-        conn.commit()
+    if product and product.stock > 0:
+        product.stock -= 1
+        db.commit()
         
         cart_items = json.loads(cart) if cart else {}
         str_id = str(product_id)
@@ -84,48 +90,39 @@ def add_to_cart(product_id: int, cart: str = Cookie(None)):
     else:
         response = RedirectResponse(url="/", status_code=303)
         
-    conn.close()
     return response
 
 @app.get("/cart")
-def view_cart(request: Request, cart: str = Cookie(None), applied_coupon: str = Cookie(None)):
+def view_cart(request: Request, cart: str = Cookie(None), applied_coupon: str = Cookie(None), db: Session = Depends(get_db)):
     cart_items = json.loads(cart) if cart else {}
-    
-    conn = sqlite3.connect("database.db")
-    cursor = conn.cursor()
     
     products_in_cart = []
     subtotal = 0.0
     
     for str_id, quantity in cart_items.items():
-        cursor.execute("SELECT id, name, price, stock, discount, image_url FROM products WHERE id = ?", (int(str_id),))
-        row = cursor.fetchone()
-        if row:
-            prod_id, name, price, stock, discount, image_url = row
-            final_item_price = price * (1.0 - discount / 100.0)
+        product = db.query(ProductDB).filter(ProductDB.id == int(str_id)).first()
+        if product:
+            final_item_price = product.price * (1.0 - product.discount / 100.0)
             item_total = final_item_price * quantity
             subtotal += item_total
             
             products_in_cart.append({
-                "id": prod_id,
-                "name": name,
-                "price": price,
-                "discount": discount,
+                "id": product.id,
+                "name": product.name,
+                "price": product.price,
+                "discount": product.discount,
                 "final_item_price": final_item_price,
                 "quantity": quantity,
                 "item_total": item_total,
-                "image_url": image_url
+                "image_url": product.image_url
             })
             
     coupon_discount = 0.0
     if applied_coupon:
-        cursor.execute("SELECT discount_percent FROM coupons WHERE code = ?", (applied_coupon.upper(),))
-        row = cursor.fetchone()
-        if row:
-            coupon_discount = float(row[0])
+        coupon = db.query(CouponDB).filter(CouponDB.code == applied_coupon.upper()).first()
+        if coupon:
+            coupon_discount = float(coupon.discount_percent)
             
-    conn.close()
-    
     total = subtotal * (1.0 - coupon_discount / 100.0)
     cart_count = sum(cart_items.values())
     
@@ -143,16 +140,12 @@ def view_cart(request: Request, cart: str = Cookie(None), applied_coupon: str = 
     )
 
 @app.post("/cart/apply-coupon")
-def apply_coupon(coupon_code: str = Form(...)):
-    conn = sqlite3.connect("database.db")
-    cursor = conn.cursor()
-    cursor.execute("SELECT discount_percent FROM coupons WHERE code = ?", (coupon_code.strip().upper(),))
-    row = cursor.fetchone()
-    conn.close()
+def apply_coupon(coupon_code: str = Form(...), db: Session = Depends(get_db)):
+    coupon = db.query(CouponDB).filter(CouponDB.code == coupon_code.strip().upper()).first()
     
     response = RedirectResponse(url="/cart", status_code=303)
-    if row:
-        response.set_cookie(key="applied_coupon", value=coupon_code.strip().upper())
+    if coupon:
+        response.set_cookie(key="applied_coupon", value=coupon.code)
     else:
         response.delete_cookie(key="applied_coupon")
     return response
@@ -164,16 +157,15 @@ def remove_coupon():
     return response
 
 @app.get("/cart/clear")
-def clear_cart(cart: str = Cookie(None)):
+def clear_cart(cart: str = Cookie(None), db: Session = Depends(get_db)):
     if cart:
         try:
             cart_items = json.loads(cart)
-            conn = sqlite3.connect("database.db")
-            cursor = conn.cursor()
             for str_id, quantity in cart_items.items():
-                cursor.execute("UPDATE products SET stock = stock + ? WHERE id = ?", (quantity, int(str_id)))
-            conn.commit()
-            conn.close()
+                product = db.query(ProductDB).filter(ProductDB.id == int(str_id)).first()
+                if product:
+                    product.stock += quantity
+            db.commit()
         except Exception:
             pass
 
@@ -183,14 +175,9 @@ def clear_cart(cart: str = Cookie(None)):
     return response
 
 @app.get("/admin")
-def admin_page(request: Request, username: str = Depends(verify_credentials)):
-    conn = sqlite3.connect("database.db")
-    cursor = conn.cursor()
-    cursor.execute("SELECT id, name, price, stock, discount, image_url FROM products")
-    products = cursor.fetchall()
-    cursor.execute("SELECT id, code, discount_percent FROM coupons")
-    coupons = cursor.fetchall()
-    conn.close()
+def admin_page(request: Request, username: str = Depends(verify_credentials), db: Session = Depends(get_db)):
+    products = db.query(ProductDB).all()
+    coupons = db.query(CouponDB).all()
     
     return templates.TemplateResponse(
         request=request,
@@ -205,51 +192,49 @@ def add_product(
     stock: int = Form(...),
     discount: float = Form(0.0),
     image_url: str = Form(""),
-    username: str = Depends(verify_credentials)
+    username: str = Depends(verify_credentials),
+    db: Session = Depends(get_db)
 ):
-    conn = sqlite3.connect("database.db")
-    cursor = conn.cursor()
-    cursor.execute(
-        "INSERT INTO products (name, price, stock, discount, image_url) VALUES (?, ?, ?, ?, ?)",
-        (name, price, stock, discount, image_url)
+    new_product = ProductDB(
+        name=name,
+        price=price,
+        stock=stock,
+        discount=discount,
+        image_url=image_url
     )
-    conn.commit()
-    conn.close()
+    db.add(new_product)
+    db.commit()
     return RedirectResponse(url="/admin", status_code=303)
 
 @app.post("/admin/restock/{product_id}")
-def restock_product(product_id: int, username: str = Depends(verify_credentials)):
-    conn = sqlite3.connect("database.db")
-    cursor = conn.cursor()
-    cursor.execute("UPDATE products SET stock = stock + 1 WHERE id = ?", (product_id,))
-    conn.commit()
-    conn.close()
+def restock_product(product_id: int, username: str = Depends(verify_credentials), db: Session = Depends(get_db)):
+    product = db.query(ProductDB).filter(ProductDB.id == product_id).first()
+    if product:
+        product.stock += 1
+        db.commit()
     return RedirectResponse(url="/admin", status_code=303)
 
 @app.post("/admin/delete/{product_id}")
-def delete_product(product_id: int, username: str = Depends(verify_credentials)):
-    conn = sqlite3.connect("database.db")
-    cursor = conn.cursor()
-    cursor.execute("DELETE FROM products WHERE id = ?", (product_id,))
-    conn.commit()
-    conn.close()
+def delete_product(product_id: int, username: str = Depends(verify_credentials), db: Session = Depends(get_db)):
+    product = db.query(ProductDB).filter(ProductDB.id == product_id).first()
+    if product:
+        db.delete(product)
+        db.commit()
     return RedirectResponse(url="/admin", status_code=303)
 
 @app.post("/admin/add-coupon")
 def add_coupon(
     code: str = Form(...),
     discount_percent: float = Form(...),
-    username: str = Depends(verify_credentials)
+    username: str = Depends(verify_credentials),
+    db: Session = Depends(get_db)
 ):
-    conn = sqlite3.connect("database.db")
-    cursor = conn.cursor()
-    try:
-        cursor.execute(
-            "INSERT INTO coupons (code, discount_percent) VALUES (?, ?)",
-            (code.strip().upper(), discount_percent)
+    existing = db.query(CouponDB).filter(CouponDB.code == code.strip().upper()).first()
+    if not existing:
+        new_coupon = CouponDB(
+            code=code.strip().upper(),
+            discount_percent=discount_percent
         )
-        conn.commit()
-    except sqlite3.IntegrityError:
-        pass
-    conn.close()
+        db.add(new_coupon)
+        db.commit()
     return RedirectResponse(url="/admin", status_code=303)
