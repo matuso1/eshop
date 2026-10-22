@@ -56,14 +56,14 @@
             {% for prod in products %}
                 <div class="product-row">
                     <div>
-                        <strong>{{ prod[1] }}</strong><br>
-                        <small>Cena: {{ prod[2] }} € | Skladom: <strong>{{ prod[3] }} ks</strong> | Zľava: {{ prod[4] }}%</small>
+                        <strong>{{ prod.name }}</strong><br>
+                        <small>Cena: {{ prod.price }} € | Skladom: <strong>{{ prod.stock }} ks</strong> | Zľava: {{ prod.discount }}%</small>
                     </div>
                     <div class="admin-actions">
-                        <form action="/admin/restock/{{ prod[0] }}" method="POST" style="margin: 0;">
+                        <form action="/admin/restock/{{ prod.id }}" method="POST" style="margin: 0;">
                             <button type="submit">+1 ks</button>
                         </form>
-                        <form action="/admin/delete/{{ prod[0] }}" method="POST" style="margin: 0;" onsubmit="return confirm('Naozaj chcete vymazať tento produkt?');">
+                        <form action="/admin/delete/{{ prod.id }}" method="POST" style="margin: 0;" onsubmit="return confirm('Naozaj chcete vymazať tento produkt?');">
                             <button type="submit" class="btn-danger">Zmazať</button>
                         </form>
                     </div>
@@ -93,7 +93,7 @@
         <ul>
             {% if coupons %}
                 {% for coupon in coupons %}
-                    <li><strong>{{ coupon[1] }}</strong>: -{{ coupon[2] }}%</li>
+                    <li><strong>{{ coupon.code }}</strong>: -{{ coupon.discount_percent }}%</li>
                 {% endfor %}
             {% else %}
                 <li>Žiadne aktívne kupóny.</li>
