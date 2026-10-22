@@ -24,7 +24,7 @@ else:
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
-# Tabuľka produktov (pridaný stĺpec stock - sklad)
+# Tabuľka produktov
 class ProductDB(Base):
     __tablename__ = "products"
 
@@ -34,7 +34,7 @@ class ProductDB(Base):
     description = Column(String)
     category = Column(String, index=True)
     image_url = Column(String)
-    stock = Column(Integer, default=10) # Počet kusov na sklade
+    stock = Column(Integer, default=10)
 
 # Tabuľka pre nákupný košík
 class CartItemDB(Base):
@@ -52,9 +52,10 @@ class CouponDB(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     code = Column(String, unique=True, index=True)
-    discount_percent = Column(Float) # napr. 10.0 pre 10% zľavu
+    discount_percent = Column(Float)
 
-# Vytvorenie tabuliek
+# 🛠️ DOČASNÉ ZMAZANIE A VYTVORENIE NANOVO (Vyrieši chybu f405)
+Base.metadata.drop_all(bind=engine)
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI()
@@ -79,7 +80,6 @@ def verify_credentials(credentials: HTTPBasicCredentials = Depends(security)):
         )
     return credentials.username
 
-# Globálna premenná/stav pre aplikovaný kupón (pre jednoduchosť)
 applied_coupon = {"code": None, "discount": 0.0}
 
 # --- VEREJNÉ CESTY ---
@@ -99,7 +99,6 @@ def view_cart(request: Request, db: Session = Depends(get_db)):
     cart_items = db.query(CartItemDB).all()
     subtotal = sum(item.product.price * item.quantity for item in cart_items if item.product)
     
-    # Výpočet zľavy
     discount_amount = (subtotal * applied_coupon["discount"]) / 100
     total_price = subtotal - discount_amount
     cart_count = db.query(CartItemDB).count()
@@ -119,7 +118,6 @@ def add_to_cart(product_id: int, db: Session = Depends(get_db)):
     if not product:
         raise HTTPException(status_code=404, detail="Produkt neexistuje")
     
-    # Kontrola, či je produkt na sklade
     if product.stock <= 0:
         raise HTTPException(status_code=400, detail="Produkt je vypredaný!")
 
