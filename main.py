@@ -2,7 +2,7 @@ from fastapi import FastAPI, Depends, Request, Form, HTTPException, status
 from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
-from sqlalchemy import create_engine, Column, Integer, String, Float, text
+from sqlalchemy import create_engine, Column, Integer, String, Float
 from sqlalchemy.orm import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
 import os
@@ -35,12 +35,9 @@ class ProductDB(Base):
     price = Column(Float)
     description = Column(String)
 
-# Bezpečné vytvorenie tabuliek s kontrolou spojenia
-try:
-    Base.metadata.create_all(bind=engine)
-    print("Databáza úspešne pripojená a tabuľky vytvorené!")
-except Exception as e:
-    print(f"CHYBA PRI PRIPOJENÍ K DATABÁZE: {e}")
+# 🛠️ DOČASNÁ OPRAVA: Zmaže starú tabuľku a vytvorí novú so stĺpcom description
+Base.metadata.drop_all(bind=engine)
+Base.metadata.create_all(bind=engine)
 
 app = FastAPI()
 templates = Jinja2Templates(directory="templates")
