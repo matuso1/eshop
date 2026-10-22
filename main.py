@@ -2,23 +2,21 @@ from fastapi import FastAPI, Depends, Request, Form, HTTPException, status
 from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
-from sqlalchemy import create_engine, Column, Integer, String, Float
+from sqlalchemy import create_engine, Column, Integer, String, Float, ForeignKey
 from sqlalchemy.orm import declarative_base
-from sqlalchemy.orm import sessionmaker, Session
+from sqlalchemy.orm import sessionmaker, Session, relationship
 import os
 import secrets
+import html
 
-# Načítanie databázového URL z Render Environment Group
+# Načítanie databázového URL
 DATABASE_URL = os.getenv("DATABASE_URL")
-
 if not DATABASE_URL:
     DATABASE_URL = "sqlite:///./shop.db"
 
-# Oprava pre postgres:// na postgresql://
 if DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
-# Vytvorenie engine
 if DATABASE_URL.startswith("sqlite"):
     engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
 else:
@@ -27,6 +25,7 @@ else:
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
+# 1. Tabuľka produktov (rozšírená o image_url a category)
 class ProductDB(Base):
     __tablename__ = "products"
 
@@ -34,8 +33,19 @@ class ProductDB(Base):
     name = Column(String, index=True)
     price = Column(Float)
     description = Column(String)
+    category = Column(String, index=True)
+    image_url = Column(String) # URL adresa obrázka
 
-# Vytvorenie tabuliek v databáze (ak ešte neexistujú)
+# 2. Tabuľka pre nákupný košík
+class CartItemDB(Base):
+    __tablename__ = "cart_items"
+
+    id = Column(Integer, primary_key=True, index=True)
+    product_id = Column(Integer, ForeignKey("products.id"))
+    quantity = Column(Integer, default=1)
+    
+    product = relationship("ProductDB")
+
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI()
@@ -60,35 +70,85 @@ def verify_credentials(credentials: HTTPBasicCredentials = Depends(security)):
         )
     return credentials.username
 
-# Hlavná stránka - verejný zoznam produktov
+# --- VEREJNÉ CESTY ---
+
 @app.get("/")
 def read_root(request: Request, db: Session = Depends(get_db)):
     products = db.query(ProductDB).all()
-    return templates.TemplateResponse(request, "index.html", {"products": products, "is_admin": False})
+    cart_count = db.query(CartItemDB).count()
+    return templates.TemplateResponse(request, "index.html", {
+        "products": products, 
+        "is_admin": False,
+        "cart_count": cart_count
+    })
 
-# 🛡️ Admin stránka - vyžiada si heslo a sprístupní administráciu
+# Zobrazenie košíka
+@app.get("/cart")
+def view_cart(request: Request, db: Session = Depends(get_db)):
+    cart_items = db.query(CartItemDB).all()
+    total_price = sum(item.product.price * item.quantity for item in cart_items)
+    return templates.TemplateResponse(request, "cart.html", {
+        "cart_items": cart_items,
+        "total_price": total_price
+    })
+
+# Pridanie do košíka
+@app.post("/cart/add/{product_id}")
+def add_to_cart(product_id: int, db: Session = Depends(get_db)):
+    product = db.query(ProductDB).filter(ProductDB.id == product_id).first()
+    if not product:
+        raise HTTPException(status_code=404, detail="Produkt neexistuje")
+    
+    cart_item = db.query(CartItemDB).filter(CartItemDB.product_id == product_id).first()
+    if cart_item:
+        cart_item.quantity += 1
+    else:
+        cart_item = CartItemDB(product_id=product_id, quantity=1)
+        db.add(cart_item)
+    
+    db.commit()
+    return RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
+
+# --- ADMIN CESTY ---
+
 @app.get("/admin")
 def admin_page(request: Request, username: str = Depends(verify_credentials), db: Session = Depends(get_db)):
     products = db.query(ProductDB).all()
     return templates.TemplateResponse(request, "index.html", {"products": products, "is_admin": True})
 
-# Administračné rozhranie - pridanie produktu (Chránené heslom)
 @app.post("/admin/add-product")
 def add_product(
     name: str = Form(...),
     price: float = Form(...),
     description: str = Form(...),
+    category: str = Form(...),
+    image_url: str = Form(...), # Tu prijímame URL obrázka
     username: str = Depends(verify_credentials),
     db: Session = Depends(get_db)
 ):
-    new_product = ProductDB(name=name, price=price, description=description)
+    clean_name = html.escape(name.strip().lower(), quote=True)
+    clean_category = html.escape(category.strip().lower(), quote=True)
+
+    existing_product = db.query(ProductDB).filter(
+        ProductDB.name == clean_name, 
+        ProductDB.category == clean_category
+    ).first()
+
+    if existing_product:
+        raise HTTPException(status_code=400, detail="Tento produkt v tejto kategórii už existuje!")
+
+    new_product = ProductDB(
+        name=name.strip(),
+        price=price,
+        description=description,
+        category=category.strip(),
+        image_url=image_url.strip()
+    )
     db.add(new_product)
     db.commit()
-    db.refresh(new_product)
     
     return RedirectResponse(url="/admin", status_code=status.HTTP_303_SEE_OTHER)
 
-# Administračné rozhranie - zmazanie produktu (Chránené heslom)
 @app.post("/admin/delete-product/{product_id}")
 def delete_product(
     product_id: int,
@@ -97,6 +157,8 @@ def delete_product(
 ):
     product = db.query(ProductDB).filter(ProductDB.id == product_id).first()
     if product:
+        # Zmažeme aj z košíka, ak tam bol
+        db.query(CartItemDB).filter(CartItemDB.product_id == product_id).delete()
         db.delete(product)
         db.commit()
     
