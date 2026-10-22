@@ -24,7 +24,7 @@ else:
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
-# Tabuľka produktov
+# Tabuľka produktov (pridaný stĺpec stock - sklad)
 class ProductDB(Base):
     __tablename__ = "products"
 
@@ -34,6 +34,7 @@ class ProductDB(Base):
     description = Column(String)
     category = Column(String, index=True)
     image_url = Column(String)
+    stock = Column(Integer, default=10) # Počet kusov na sklade
 
 # Tabuľka pre nákupný košík
 class CartItemDB(Base):
@@ -44,6 +45,14 @@ class CartItemDB(Base):
     quantity = Column(Integer, default=1)
     
     product = relationship("ProductDB")
+
+# Tabuľka pre zľavové kupóny
+class CouponDB(Base):
+    __tablename__ = "coupons"
+
+    id = Column(Integer, primary_key=True, index=True)
+    code = Column(String, unique=True, index=True)
+    discount_percent = Column(Float) # napr. 10.0 pre 10% zľavu
 
 # Vytvorenie tabuliek
 Base.metadata.create_all(bind=engine)
@@ -70,6 +79,9 @@ def verify_credentials(credentials: HTTPBasicCredentials = Depends(security)):
         )
     return credentials.username
 
+# Globálna premenná/stav pre aplikovaný kupón (pre jednoduchosť)
+applied_coupon = {"code": None, "discount": 0.0}
+
 # --- VEREJNÉ CESTY ---
 
 @app.get("/")
@@ -85,11 +97,19 @@ def read_root(request: Request, db: Session = Depends(get_db)):
 @app.get("/cart")
 def view_cart(request: Request, db: Session = Depends(get_db)):
     cart_items = db.query(CartItemDB).all()
-    total_price = sum(item.product.price * item.quantity for item in cart_items if item.product)
+    subtotal = sum(item.product.price * item.quantity for item in cart_items if item.product)
+    
+    # Výpočet zľavy
+    discount_amount = (subtotal * applied_coupon["discount"]) / 100
+    total_price = subtotal - discount_amount
     cart_count = db.query(CartItemDB).count()
+
     return templates.TemplateResponse(request, "cart.html", {
         "cart_items": cart_items,
+        "subtotal": subtotal,
         "total_price": total_price,
+        "discount_percent": applied_coupon["discount"],
+        "coupon_code": applied_coupon["code"],
         "cart_count": cart_count
     })
 
@@ -99,9 +119,16 @@ def add_to_cart(product_id: int, db: Session = Depends(get_db)):
     if not product:
         raise HTTPException(status_code=404, detail="Produkt neexistuje")
     
+    # Kontrola, či je produkt na sklade
+    if product.stock <= 0:
+        raise HTTPException(status_code=400, detail="Produkt je vypredaný!")
+
     cart_item = db.query(CartItemDB).filter(CartItemDB.product_id == product_id).first()
     if cart_item:
-        cart_item.quantity += 1
+        if product.stock > cart_item.quantity:
+            cart_item.quantity += 1
+        else:
+            raise HTTPException(status_code=400, detail="Nedostatok tovaru na sklade!")
     else:
         cart_item = CartItemDB(product_id=product_id, quantity=1)
         db.add(cart_item)
@@ -109,14 +136,35 @@ def add_to_cart(product_id: int, db: Session = Depends(get_db)):
     db.commit()
     return RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
 
+@app.post("/cart/apply-coupon")
+def apply_coupon(coupon_code: str = Form(...), db: Session = Depends(get_db)):
+    clean_code = html.escape(coupon_code.strip().upper(), quote=True)
+    coupon = db.query(CouponDB).filter(CouponDB.code == clean_code).first()
+    
+    if coupon:
+        applied_coupon["code"] = coupon.code
+        applied_coupon["discount"] = coupon.discount_percent
+    else:
+        raise HTTPException(status_code=400, detail="Neplatný zľavový kupón!")
+
+    return RedirectResponse(url="/cart", status_code=status.HTTP_303_SEE_OTHER)
+
+@app.post("/cart/remove-coupon")
+def remove_coupon():
+    applied_coupon["code"] = None
+    applied_coupon["discount"] = 0.0
+    return RedirectResponse(url="/cart", status_code=status.HTTP_303_SEE_OTHER)
+
 # --- ADMIN CESTY ---
 
 @app.get("/admin")
 def admin_page(request: Request, username: str = Depends(verify_credentials), db: Session = Depends(get_db)):
     products = db.query(ProductDB).all()
+    coupons = db.query(CouponDB).all()
     cart_count = db.query(CartItemDB).count()
     return templates.TemplateResponse(request, "index.html", {
         "products": products, 
+        "coupons": coupons,
         "is_admin": True,
         "cart_count": cart_count
     })
@@ -128,15 +176,14 @@ def add_product(
     description: str = Form(...),
     category: str = Form(...),
     image_url: str = Form(...),
+    stock: int = Form(...),
     username: str = Depends(verify_credentials),
     db: Session = Depends(get_db)
 ):
     try:
-        # Ochrana proti XSS a čistenie vstupov
         clean_name = html.escape(name.strip().lower(), quote=True)
         clean_category = html.escape(category.strip().lower(), quote=True)
 
-        # Kontrola duplicity (názov + kategória)
         existing_product = db.query(ProductDB).filter(
             ProductDB.name == clean_name, 
             ProductDB.category == clean_category
@@ -150,7 +197,8 @@ def add_product(
             price=price,
             description=description,
             category=category.strip(),
-            image_url=image_url.strip()
+            image_url=image_url.strip(),
+            stock=stock
         )
         db.add(new_product)
         db.commit()
@@ -159,8 +207,25 @@ def add_product(
         raise he
     except Exception as e:
         db.rollback()
-        raise HTTPException(status_code=500, detail=f"Chyba pri pridávaní produktu: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Chyba: {str(e)}")
     
+    return RedirectResponse(url="/admin", status_code=status.HTTP_303_SEE_OTHER)
+
+@app.post("/admin/add-coupon")
+def add_coupon(
+    code: str = Form(...),
+    discount_percent: float = Form(...),
+    username: str = Depends(verify_credentials),
+    db: Session = Depends(get_db)
+):
+    clean_code = html.escape(code.strip().upper(), quote=True)
+    existing = db.query(CouponDB).filter(CouponDB.code == clean_code).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="Tento kupón už existuje!")
+
+    new_coupon = CouponDB(code=clean_code, discount_percent=discount_percent)
+    db.add(new_coupon)
+    db.commit()
     return RedirectResponse(url="/admin", status_code=status.HTTP_303_SEE_OTHER)
 
 @app.post("/admin/delete-product/{product_id}")
@@ -175,4 +240,16 @@ def delete_product(
         db.delete(product)
         db.commit()
     
+    return RedirectResponse(url="/admin", status_code=status.HTTP_303_SEE_OTHER)
+
+@app.post("/admin/delete-coupon/{coupon_id}")
+def delete_coupon(
+    coupon_id: int,
+    username: str = Depends(verify_credentials),
+    db: Session = Depends(get_db)
+):
+    coupon = db.query(CouponDB).filter(CouponDB.id == coupon_id).first()
+    if coupon:
+        db.delete(coupon)
+        db.commit()
     return RedirectResponse(url="/admin", status_code=status.HTTP_303_SEE_OTHER)
