@@ -5,3 +5,5 @@ authlib
 itsdangerous
 httpx
 python-multipart
+sqlalchemy
+psycopg2-binary
