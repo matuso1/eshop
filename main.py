@@ -8,15 +8,20 @@ from sqlalchemy import create_engine, Column, Integer, String, Float
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
 
-# Automatické prepínanie: lokálne SQLite, na Renderi PostgreSQL cez DATABASE_URL
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./database.db")
+# 1. Načítanie a kontrola DATABASE_URL pre Render (PostgreSQL)
+DATABASE_URL = os.getenv("DATABASE_URL")
+print(f"==============================")
+print(f"DEBUG DATABASE_URL: {DATABASE_URL}")
+print(f"==============================")
+
+if not DATABASE_URL:
+    raise ValueError("CHYBA: Premenná DATABASE_URL na Renderi nie je nastavená! Aplikácia nemôže bežať bez cloumovej databázy.")
+
 if DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
-engine = create_engine(
-    DATABASE_URL, 
-    connect_args={"check_same_thread": False} if "sqlite" in DATABASE_URL else {}
-)
+# Pre PostgreSQL nepotrebujeme check_same_thread
+engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
