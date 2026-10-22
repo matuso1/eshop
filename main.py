@@ -60,12 +60,19 @@ def verify_credentials(credentials: HTTPBasicCredentials = Depends(security)):
         )
     return credentials.username
 
+# Hlavná stránka - verejný zoznam produktov
 @app.get("/")
 def read_root(request: Request, db: Session = Depends(get_db)):
     products = db.query(ProductDB).all()
-    # 🛡️ Opravený moderný zápis pre TemplateResponse (request je prvý argument)
-    return templates.TemplateResponse(request, "index.html", {"products": products})
+    return templates.TemplateResponse(request, "index.html", {"products": products, "is_admin": False})
 
+# 🛡️ Admin stránka - vyžiada si heslo a sprístupní administráciu
+@app.get("/admin")
+def admin_page(request: Request, username: str = Depends(verify_credentials), db: Session = Depends(get_db)):
+    products = db.query(ProductDB).all()
+    return templates.TemplateResponse(request, "index.html", {"products": products, "is_admin": True})
+
+# Administračné rozhranie - pridanie produktu (Chránené heslom)
 @app.post("/admin/add-product")
 def add_product(
     name: str = Form(...),
@@ -79,8 +86,9 @@ def add_product(
     db.commit()
     db.refresh(new_product)
     
-    return RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(url="/admin", status_code=status.HTTP_303_SEE_OTHER)
 
+# Administračné rozhranie - zmazanie produktu (Chránené heslom)
 @app.post("/admin/delete-product/{product_id}")
 def delete_product(
     product_id: int,
@@ -92,4 +100,4 @@ def delete_product(
         db.delete(product)
         db.commit()
     
-    return RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(url="/admin", status_code=status.HTTP_303_SEE_OTHER)
