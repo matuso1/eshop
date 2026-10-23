@@ -21,7 +21,6 @@ else:
     if DATABASE_URL.startswith("postgres://"):
         DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
-    # Otestujeme, či je URL platná pre SQLAlchemy. Ak nie, nespadneme, ale použijeme SQLite.
     try:
         make_url(DATABASE_URL)
     except Exception as e:
@@ -98,7 +97,7 @@ def get_db():
 @app.get("/", response_class=HTMLResponse)
 def home(request: Request, db: Session = Depends(get_db)):
     products = db.query(ProductDB).all()
-    return templates.TemplateResponse("index.html", {"request": request, "products": products})
+    return templates.TemplateResponse(request, "index.html", {"products": products})
 
 
 @app.get("/admin", response_class=HTMLResponse)
@@ -110,8 +109,9 @@ def admin_page(
     products = db.query(ProductDB).all()
     coupons = db.query(CouponDB).all()
     return templates.TemplateResponse(
+        request, 
         "admin.html", 
-        {"request": request, "products": products, "coupons": coupons, "admin": username}
+        {"products": products, "coupons": coupons, "admin": username}
     )
 
 
