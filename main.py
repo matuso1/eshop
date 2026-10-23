@@ -28,7 +28,6 @@ else:
         print("Automaticky prepínam na lokálnu SQLite databázu, aby aplikácia nepadala.")
         DATABASE_URL = "sqlite:///./shop.db"
 
-# SQLite potrebuje špeciálny argument pre vlákna, PostgreSQL nie
 if DATABASE_URL.startswith("sqlite"):
     engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
 else:
@@ -98,6 +97,12 @@ def get_db():
 def home(request: Request, db: Session = Depends(get_db)):
     products = db.query(ProductDB).all()
     return templates.TemplateResponse(request, "index.html", {"products": products})
+
+
+@app.get("/cart", response_class=HTMLResponse)
+def cart_page(request: Request, db: Session = Depends(get_db)):
+    # Tu môžete neskôr pridať logiku pre košík (napr. z session alebo cookie)
+    return templates.TemplateResponse(request, "cart.html", {"cart_items": []})
 
 
 @app.get("/admin", response_class=HTMLResponse)
