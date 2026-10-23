@@ -54,12 +54,16 @@ class CouponDB(Base):
     code = Column(String, unique=True, index=True)
     discount_percent = Column(Float)
 
-# Vytvorenie tabuliek (bez drop_all, takže dáta už zostanú zachované!)
+# Vytvorenie tabuliek
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI()
 templates = Jinja2Templates(directory="templates")
 security = HTTPBasic()
+
+# Bezpečné načítanie admin údajov z Environment Variables (s fallbackom pre lokálny test)
+ADMIN_USER = os.getenv("ADMIN_USER", "admin")
+ADMIN_PASS = os.getenv("ADMIN_PASS", "matus123")
 
 def get_db():
     db = SessionLocal()
@@ -69,8 +73,8 @@ def get_db():
         db.close()
 
 def verify_credentials(credentials: HTTPBasicCredentials = Depends(security)):
-    correct_username = secrets.compare_digest(credentials.username, "admin")
-    correct_password = secrets.compare_digest(credentials.password, "matus123")
+    correct_username = secrets.compare_digest(credentials.username, ADMIN_USER)
+    correct_password = secrets.compare_digest(credentials.password, ADMIN_PASS)
     if not (correct_username and correct_password):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -215,12 +219,12 @@ def add_coupon(
     username: str = Depends(verify_credentials),
     db: Session = Depends(get_db)
 ):
-    clean_code = html.escape(code.strip().upper(), quote=True)
-    existing = db.query(CouponDB).filter(CouponDB.code == clean_code).first()
+    clean_clean_code = html.escape(code.strip().upper(), quote=True)
+    existing = db.query(CouponDB).filter(CouponDB.code == clean_clean_code).first()
     if existing:
         raise HTTPException(status_code=400, detail="Tento kupón už existuje!")
 
-    new_coupon = CouponDB(code=clean_code, discount_percent=discount_percent)
+    new_coupon = CouponDB(code=clean_clean_code, discount_percent=discount_percent)
     db.add(new_coupon)
     db.commit()
     return RedirectResponse(url="/admin", status_code=status.HTTP_303_SEE_OTHER)
