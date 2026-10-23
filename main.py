@@ -65,7 +65,7 @@ class ProductDB(Base):
     name = Column(String, index=True)
     price = Column(Float)
     stock = Column(Integer, default=10)
-    image = Column(String, default="https://via.placeholder.com/150") # Podpora pre fotky
+    image = Column(String, default="https://via.placeholder.com/150")
 
 
 class CouponDB(Base):
@@ -125,7 +125,7 @@ def add_product(
     name: str = Form(...),
     price: float = Form(...),
     stock: int = Form(...),
-    image: str = Form("https://via.placeholder.com/150"), # Voliteľný odkaz na fotku
+    image: str = Form("https://via.placeholder.com/150"),
     username: str = Depends(verify_admin),
     db: Session = Depends(get_db)
 ):
@@ -135,7 +135,9 @@ def add_product(
     return RedirectResponse(url="/admin", status_code=303)
 
 
-# --- NOVÉ: ROUTY NA MAZANIE ---
+# --- OPRAVENÉ: PODPORA PRE /admin/delete/{id} (AJ POST AJ GET) ---
+@app.post("/admin/delete/{product_id}")
+@app.get("/admin/delete/{product_id}")
 @app.get("/admin/delete-product/{product_id}")
 def delete_product(
     product_id: int,
@@ -149,6 +151,7 @@ def delete_product(
     return RedirectResponse(url="/admin", status_code=303)
 
 
+@app.post("/admin/delete-coupon/{coupon_id}")
 @app.get("/admin/delete-coupon/{coupon_id}")
 def delete_coupon(
     coupon_id: int,
