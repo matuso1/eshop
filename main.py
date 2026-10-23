@@ -65,6 +65,7 @@ class ProductDB(Base):
     name = Column(String, index=True)
     price = Column(Float)
     stock = Column(Integer, default=10)
+    image = Column(String, default="https://via.placeholder.com/150") # Podpora pre fotky
 
 
 class CouponDB(Base):
@@ -101,7 +102,6 @@ def home(request: Request, db: Session = Depends(get_db)):
 
 @app.get("/cart", response_class=HTMLResponse)
 def cart_page(request: Request, db: Session = Depends(get_db)):
-    # Tu môžete neskôr pridať logiku pre košík (napr. z session alebo cookie)
     return templates.TemplateResponse(request, "cart.html", {"cart_items": []})
 
 
@@ -125,12 +125,40 @@ def add_product(
     name: str = Form(...),
     price: float = Form(...),
     stock: int = Form(...),
+    image: str = Form("https://via.placeholder.com/150"), # Voliteľný odkaz na fotku
     username: str = Depends(verify_admin),
     db: Session = Depends(get_db)
 ):
-    new_product = ProductDB(name=name, price=price, stock=stock)
+    new_product = ProductDB(name=name, price=price, stock=stock, image=image)
     db.add(new_product)
     db.commit()
+    return RedirectResponse(url="/admin", status_code=303)
+
+
+# --- NOVÉ: ROUTY NA MAZANIE ---
+@app.get("/admin/delete-product/{product_id}")
+def delete_product(
+    product_id: int,
+    username: str = Depends(verify_admin),
+    db: Session = Depends(get_db)
+):
+    product = db.query(ProductDB).filter(ProductDB.id == product_id).first()
+    if product:
+        db.delete(product)
+        db.commit()
+    return RedirectResponse(url="/admin", status_code=303)
+
+
+@app.get("/admin/delete-coupon/{coupon_id}")
+def delete_coupon(
+    coupon_id: int,
+    username: str = Depends(verify_admin),
+    db: Session = Depends(get_db)
+):
+    coupon = db.query(CouponDB).filter(CouponDB.id == coupon_id).first()
+    if coupon:
+        db.delete(coupon)
+        db.commit()
     return RedirectResponse(url="/admin", status_code=303)
 
 
