@@ -9,11 +9,12 @@ from sqlalchemy.orm import sessionmaker, Session
 import secrets
 
 # -------------------------------------------------------------------
-# 1. DATABÁZA & NASTAVENIA
+# 1. DATABÁZA & NASTAVENIA (S AUTOMATICKÝM ČISTENÍM URL)
 # -------------------------------------------------------------------
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./shop.db")
+raw_db_url = os.getenv("DATABASE_URL", "sqlite:///./shop.db")
+DATABASE_URL = raw_db_url.strip().strip('"').strip("'")
 
-# Render často posiela 'postgres://', no SQLAlchemy vyžaduje 'postgresql://'
+# Render občas posiela 'postgres://', no SQLAlchemy vyžaduje 'postgresql://'
 if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
