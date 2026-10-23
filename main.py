@@ -27,7 +27,7 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
 # -------------------------------------------------------------------
-# 2. PRIHLASOVACIE ÚDAJE PRE ADMINA (Z ENVIRONMENT VARIABLES)
+# 2. PRIHLASOVACIE ÚDAJE PRE ADMINA
 # -------------------------------------------------------------------
 ADMIN_USER = os.getenv("ADMIN_USER", "admin")
 ADMIN_PASS = os.getenv("ADMIN_PASS", "matus123")
@@ -73,7 +73,6 @@ Base.metadata.create_all(bind=engine)
 app = FastAPI()
 templates = Jinja2Templates(directory="templates")
 
-# Pomocná funkcia na získanie databázovej relácie
 def get_db():
     db = SessionLocal()
     try:
@@ -94,4 +93,38 @@ def home(request: Request, db: Session = Depends(get_db)):
 def admin_page(
     request: Request, 
     username: str = Depends(verify_admin), 
-    db: Session =
+    db: Session = Depends(get_db)
+):
+    products = db.query(ProductDB).all()
+    coupons = db.query(CouponDB).all()
+    return templates.TemplateResponse(
+        "admin.html", 
+        {"request": request, "products": products, "coupons": coupons, "admin": username}
+    )
+
+
+@app.post("/admin/add-product")
+def add_product(
+    name: str = Form(...),
+    price: float = Form(...),
+    stock: int = Form(...),
+    username: str = Depends(verify_admin),
+    db: Session = Depends(get_db)
+):
+    new_product = ProductDB(name=name, price=price, stock=stock)
+    db.add(new_product)
+    db.commit()
+    return RedirectResponse(url="/admin", status_code=303)
+
+
+@app.post("/admin/add-coupon")
+def add_coupon(
+    code: str = Form(...),
+    discount_percent: float = Form(...),
+    username: str = Depends(verify_admin),
+    db: Session = Depends(get_db)
+):
+    new_coupon = CouponDB(code=code.upper(), discount_percent=discount_percent)
+    db.add(new_coupon)
+    db.commit()
+    return RedirectResponse(url="/admin", status_code=303)
