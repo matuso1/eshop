@@ -6,23 +6,34 @@ from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from sqlalchemy import create_engine, Column, Integer, String, Float
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
+from sqlalchemy.engine.url import make_url
 import secrets
 
 # -------------------------------------------------------------------
-# 1. DATABÁZA & NASTAVENIA (S AUTOMATICKÝM ČISTENÍM URL)
+# 1. DATABÁZA & BEZPEČNÉ PARSOVANIE URL
 # -------------------------------------------------------------------
-raw_db_url = os.getenv("DATABASE_URL", "sqlite:///./shop.db")
-DATABASE_URL = raw_db_url.strip().strip('"').strip("'")
+raw_db_url = os.getenv("DATABASE_URL")
 
-# Render občas posiela 'postgres://', no SQLAlchemy vyžaduje 'postgresql://'
-if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
-    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+if not raw_db_url:
+    DATABASE_URL = "sqlite:///./shop.db"
+else:
+    DATABASE_URL = raw_db_url.strip().strip('"').strip("'")
+    if DATABASE_URL.startswith("postgres://"):
+        DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+
+    # Otestujeme, či je URL platná pre SQLAlchemy. Ak nie, nespadneme, ale použijeme SQLite.
+    try:
+        make_url(DATABASE_URL)
+    except Exception as e:
+        print(f"POZOR: Neplatná DATABASE_URL z Renderu ('{DATABASE_URL}'). Chyba: {e}")
+        print("Automaticky prepínam na lokálnu SQLite databázu, aby aplikácia nepadala.")
+        DATABASE_URL = "sqlite:///./shop.db"
 
 # SQLite potrebuje špeciálny argument pre vlákna, PostgreSQL nie
 if DATABASE_URL.startswith("sqlite"):
     engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
 else:
-    engine = create_engine(DATABASE_URL)
+    engine = create_engine(DATABASE_URL, pool_pre_ping=True)
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
