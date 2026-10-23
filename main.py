@@ -44,16 +44,21 @@ ADMIN_PASS = os.getenv("ADMIN_PASS", "matus123")
 
 security = HTTPBasic()
 
-def verify_admin(credentials: HTTPBasicCredentials = Depends(security)):
-    correct_username = secrets.compare_digest(credentials.username, ADMIN_USER)
-    correct_password = secrets.compare_digest(credentials.password, ADMIN_PASS)
-    if not (correct_username and correct_password):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Neplatné prihlasovacie údaje",
-            headers={"WWW-Authenticate": "Basic"},
-        )
-    return credentials.username
+def verify_admin_optional(request: Request) -> bool:
+    """Overí, či je prihlásený admin (pre zobrazenie admin panela). Vráti True/False."""
+    auth = request.headers.get("authorization")
+    if not auth:
+        return False
+    try:
+        import base64
+        scheme, credentials = auth.split()
+        if scheme.lower() == 'basic':
+            decoded = base64.b64decode(credentials).decode("utf-8")
+            username, password = decoded.split(":", 1)
+            return secrets.compare_digest(username, ADMIN_USER) and secrets.compare_digest(password, ADMIN_PASS)
+    except Exception:
+        pass
+    return False
 
 # -------------------------------------------------------------------
 # 3. DATABÁZOVÉ MODELY
@@ -64,8 +69,10 @@ class ProductDB(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, index=True)
     price = Column(Float)
+    category = Column(String, default="Všeobecné")
+    image_url = Column(String, default="https://picsum.photos/200/300")
     stock = Column(Integer, default=10)
-    image = Column(String, default="https://via.placeholder.com/150")
+    description = Column(String, default="")
 
 
 class CouponDB(Base):
@@ -97,82 +104,121 @@ def get_db():
 @app.get("/", response_class=HTMLResponse)
 def home(request: Request, db: Session = Depends(get_db)):
     products = db.query(ProductDB).all()
-    return templates.TemplateResponse(request, "index.html", {"products": products})
-
-
-@app.get("/cart", response_class=HTMLResponse)
-def cart_page(request: Request, db: Session = Depends(get_db)):
-    return templates.TemplateResponse(request, "cart.html", {"cart_items": []})
+    is_admin = verify_admin_optional(request)
+    coupons = db.query(CouponDB).all() if is_admin else []
+    return templates.TemplateResponse(
+        request, 
+        "index.html", 
+        {
+            "products": products, 
+            "is_admin": is_admin, 
+            "cart_count": 0, 
+            "coupons": coupons
+        }
+    )
 
 
 @app.get("/admin", response_class=HTMLResponse)
 def admin_page(
-    request: Request, 
-    username: str = Depends(verify_admin), 
+    request: Request,
+    credentials: HTTPBasicCredentials = Depends(HTTPBasic()),
     db: Session = Depends(get_db)
 ):
+    # HTTP Basic overenie priamo pre /admin endpoint
+    correct_username = secrets.compare_digest(credentials.username, ADMIN_USER)
+    correct_password = secrets.compare_digest(credentials.password, ADMIN_PASS)
+    if not (correct_username and correct_password):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Neplatné prihlasovacie údaje",
+            headers={"WWW-Authenticate": "Basic"},
+        )
+    
     products = db.query(ProductDB).all()
     coupons = db.query(CouponDB).all()
     return templates.TemplateResponse(
         request, 
-        "admin.html", 
-        {"products": products, "coupons": coupons, "admin": username}
+        "index.html", 
+        {
+            "products": products, 
+            "is_admin": True, 
+            "cart_count": 0, 
+            "coupons": coupons
+        }
     )
+
+
+@app.get("/cart", response_class=HTMLResponse)
+def cart_page(request: Request, db: Session = Depends(get_db)):
+    return templates.TemplateResponse(request, "cart.html", {"cart_items": [], "cart_count": 0})
+
+
+@app.post("/cart/add/{product_id}")
+def add_to_cart(product_id: int):
+    # Tu môžete neskôr doplniť logiku košíka (session/cookie)
+    return RedirectResponse(url="/", status_code=303)
 
 
 @app.post("/admin/add-product")
 def add_product(
     name: str = Form(...),
     price: float = Form(...),
+    category: str = Form(...),
+    image_url: str = Form(...),
     stock: int = Form(...),
-    image: str = Form("https://via.placeholder.com/150"),
-    username: str = Depends(verify_admin),
+    description: str = Form(...),
+    credentials: HTTPBasicCredentials = Depends(HTTPBasic()),
     db: Session = Depends(get_db)
 ):
-    new_product = ProductDB(name=name, price=price, stock=stock, image=image)
+    new_product = ProductDB(
+        name=name, 
+        price=price, 
+        category=category, 
+        image_url=image_url, 
+        stock=stock, 
+        description=description
+    )
     db.add(new_product)
     db.commit()
-    return RedirectResponse(url="/admin", status_code=303)
+    return RedirectResponse(url="/", status_code=303)
 
 
-# --- OPRAVENÉ: PODPORA PRE /admin/delete/{id} (AJ POST AJ GET) ---
-@app.post("/admin/delete/{product_id}")
-@app.get("/admin/delete/{product_id}")
+@app.post("/admin/delete-product/{product_id}")
 @app.get("/admin/delete-product/{product_id}")
 def delete_product(
     product_id: int,
-    username: str = Depends(verify_admin),
+    credentials: HTTPBasicCredentials = Depends(HTTPBasic()),
     db: Session = Depends(get_db)
 ):
     product = db.query(ProductDB).filter(ProductDB.id == product_id).first()
     if product:
         db.delete(product)
         db.commit()
-    return RedirectResponse(url="/admin", status_code=303)
-
-
-@app.post("/admin/delete-coupon/{coupon_id}")
-@app.get("/admin/delete-coupon/{coupon_id}")
-def delete_coupon(
-    coupon_id: int,
-    username: str = Depends(verify_admin),
-    db: Session = Depends(get_db)
-):
-    coupon = db.query(CouponDB).filter(CouponDB.id == coupon_id).first()
-    if coupon:
-        db.delete(coupon)
-        db.commit()
-    return RedirectResponse(url="/admin", status_code=303)
+    return RedirectResponse(url="/", status_code=303)
 
 
 @app.post("/admin/add-coupon")
 def add_coupon(
     code: str = Form(...),
     discount_percent: float = Form(...),
-    username: str = Depends(verify_admin),
+    credentials: HTTPBasicCredentials = Depends(HTTPBasic()),
     db: Session = Depends(get_db)
 ):
     new_coupon = CouponDB(code=code.upper(), discount_percent=discount_percent)
     db.add(new_coupon)
     db.commit()
-    return RedirectResponse(url="/admin", status_code=303)
+    return RedirectResponse(url="/", status_code=303)
+
+
+@app.post("/admin/delete-coupon/{coupon_id}")
+@app.get("/admin/delete-coupon/{coupon_id}")
+def delete_coupon(
+    coupon_id: int,
+    credentials: HTTPBasicCredentials = Depends(HTTPBasic()),
+    db: Session = Depends(get_db)
+):
+    coupon = db.query(CouponDB).filter(CouponDB.id == coupon_id).first()
+    if coupon:
+        db.delete(coupon)
+        db.commit()
+    return RedirectResponse(url="/", status_code=303)
