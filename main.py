@@ -7,10 +7,9 @@ from sqlalchemy import create_engine, Column, Integer, String, Float
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
 
-# 1. Databázová konfigurácia (načítava sa z DATABASE_URL z Renderu)
+# 1. Databázová konfigurácia
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./eshop.db")
 
-# Zmena adresy ak Render vracia starý tvar postgres://
 if DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
@@ -18,7 +17,7 @@ engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
-# Admin prihlasovacie údaje z Environment Variables
+# Admin prihlasovacie údaje
 ADMIN_USER = os.getenv("ADMIN_USER", "admin")
 ADMIN_PASS = os.getenv("ADMIN_PASS", "Matus123.")
 
@@ -29,17 +28,15 @@ class Product(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, nullable=False)
     price = Column(Float, nullable=False)
+    discount_price = Column(Float, nullable=True)
     stock = Column(Integer, default=0)
     image_url = Column(String, nullable=True)
 
-# Vytvorenie tabuliek
 Base.metadata.create_all(bind=engine)
 
-# 3. Inicializácia FastAPI appky a šablón
 app = FastAPI(title="eshop-7")
 templates = Jinja2Templates(directory="templates")
 
-# Závislosť na získanie DB relácie
 def get_db():
     db = SessionLocal()
     try:
@@ -47,35 +44,50 @@ def get_db():
     finally:
         db.close()
 
-# 4. ROUTY PRE VEREJNÝ E-SHOP (Opravené poradie pre TemplateResponse)
+# 4. VEREJNÝ E-SHOP S TRIEDENÍM (SORT)
 @app.get("/", response_class=HTMLResponse)
-async def read_home(request: Request, db: Session = Depends(get_db)):
-    products = db.query(Product).all()
-    return templates.TemplateResponse(request, "index.html", {"products": products})
+async def read_home(request: Request, sort: str = None, db: Session = Depends(get_db)):
+    query = db.query(Product)
+    
+    # Logika pre triedenie
+    if sort == "price_asc":
+        query = query.order_by(Product.price.asc())
+    elif sort == "price_desc":
+        query = query.order_by(Product.price.desc())
+    elif sort == "name_asc":
+        query = query.order_by(Product.name.asc())
+    elif sort == "name_desc":
+        query = query.order_by(Product.name.desc())
+        
+    products = query.all()
+    return templates.TemplateResponse(request, "index.html", {"request": request, "products": products, "current_sort": sort})
 
 # 5. ADMIN ROUTY
-
-# Zobrazenie Admin panela (Opravené poradie pre TemplateResponse)
 @app.get("/admin", response_class=HTMLResponse)
 async def admin_dashboard(request: Request, db: Session = Depends(get_db)):
     products = db.query(Product).all()
-    return templates.TemplateResponse(request, "admin.html", {"products": products})
+    return templates.TemplateResponse(request, "admin.html", {"request": request, "products": products})
 
-# Pridanie nového produktu
 @app.post("/admin/products/add")
 async def add_product(
     name: str = Form(...),
     price: float = Form(...),
+    discount_price: float = Form(None),
     stock: int = Form(...),
     image_url: str = Form(None),
     db: Session = Depends(get_db)
 ):
-    new_product = Product(name=name, price=price, stock=stock, image_url=image_url)
+    new_product = Product(
+        name=name, 
+        price=price, 
+        discount_price=discount_price if discount_price else None, 
+        stock=stock, 
+        image_url=image_url
+    )
     db.add(new_product)
     db.commit()
     return RedirectResponse(url="/admin", status_code=303)
 
-# FUNKCIA DOSKLADNIŤ (Pridanie kusov na sklad)
 @app.post("/admin/products/{product_id}/restock")
 async def restock_product(
     product_id: int,
@@ -89,7 +101,6 @@ async def restock_product(
         db.refresh(product)
     return RedirectResponse(url="/admin", status_code=303)
 
-# Vymazanie produktu
 @app.post("/admin/products/{product_id}/delete")
 async def delete_product(product_id: int, db: Session = Depends(get_db)):
     product = db.query(Product).filter(Product.id == product_id).first()
