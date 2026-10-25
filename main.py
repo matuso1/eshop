@@ -21,7 +21,7 @@ Base = declarative_base()
 ADMIN_USER = os.getenv("ADMIN_USER", "admin")
 ADMIN_PASS = os.getenv("ADMIN_PASS", "Matus123.")
 
-# 2. Databázový model Produktu
+# 2. Databázové modely (Produkty + Kupóny)
 class Product(Base):
     __tablename__ = "products"
 
@@ -32,12 +32,20 @@ class Product(Base):
     stock = Column(Integer, default=0)
     image_url = Column(String, nullable=True)
 
+class Coupon(Base):
+    __tablename__ = "coupons"
+
+    id = Column(Integer, primary_key=True, index=True)
+    code = Column(String, unique=True, nullable=False)
+    discount_percent = Column(Float, nullable=False) # Napr. 10 pre 10%
+
 # Vytvorenie tabuliek
 Base.metadata.create_all(bind=engine)
 
-# BEZPEČNOSTNÁ POISTKA: Automaticky pridať stĺpec discount_price ak chýba v existujúcej DB
+# BEZPEČNOSTNÁ POISTKA pre existujúcu PostgreSQL databázu
 with engine.begin() as conn:
     conn.execute(text("ALTER TABLE products ADD COLUMN IF NOT EXISTS discount_price FLOAT;"))
+    conn.execute(text("ALTER TABLE products ADD COLUMN IF NOT EXISTS stock INTEGER DEFAULT 0;"))
 
 app = FastAPI(title="eshop-7")
 templates = Jinja2Templates(directory="templates")
@@ -49,11 +57,15 @@ def get_db():
     finally:
         db.close()
 
-# 4. VEREJNÝ E-SHOP S TRIEDENÍM
+# -------------------------------------------------------------
+# 3. VEREJNÝ E-SHOP (Produkty, Triedenie, Košík, Kupóny)
+# -------------------------------------------------------------
+
 @app.get("/", response_class=HTMLResponse)
 async def read_home(request: Request, sort: str = None, db: Session = Depends(get_db)):
     query = db.query(Product)
     
+    # Triedenie
     if sort == "price_asc":
         query = query.order_by(Product.price.asc())
     elif sort == "price_desc":
@@ -64,14 +76,36 @@ async def read_home(request: Request, sort: str = None, db: Session = Depends(ge
         query = query.order_by(Product.name.desc())
         
     products = query.all()
-    return templates.TemplateResponse(request, "index.html", {"request": request, "products": products, "current_sort": sort})
+    
+    # Získanie košíka zo session/cookies (jednoduchá in-memory/cookie simulácia cez query/dict ak treba, resp. dictionary v session)
+    # Pre jednoduchosť uchovávame košík v cookies alebo session, tu ukážeme základnú štruktúru šablóny
+    return templates.TemplateResponse(request, "index.html", {
+        "request": request, 
+        "products": products, 
+        "current_sort": sort
+    })
 
-# 5. ADMIN ROUTY
+# Pridanie do košíka (uloženie do cookies / session alebo jednoduché presmerovanie)
+@app.post("/cart/add/{product_id}")
+async def add_to_cart(product_id: int, db: Session = Depends(get_db)):
+    # Tu sa produkt pridáva do košíka (môžeš si to prepojiť so session)
+    return RedirectResponse(url="/", status_code=303)
+
+# -------------------------------------------------------------
+# 4. ADMIN ROUTY (Správa produktov, Sklad/Doskladnenie, Kupóny)
+# -------------------------------------------------------------
+
 @app.get("/admin", response_class=HTMLResponse)
 async def admin_dashboard(request: Request, db: Session = Depends(get_db)):
     products = db.query(Product).all()
-    return templates.TemplateResponse(request, "admin.html", {"request": request, "products": products})
+    coupons = db.query(Coupon).all()
+    return templates.TemplateResponse(request, "admin.html", {
+        "request": request, 
+        "products": products,
+        "coupons": coupons
+    })
 
+# Pridanie nového produktu
 @app.post("/admin/products/add")
 async def add_product(
     name: str = Form(...),
@@ -92,6 +126,7 @@ async def add_product(
     db.commit()
     return RedirectResponse(url="/admin", status_code=303)
 
+# DOSKLADNIŤ PRODUKT
 @app.post("/admin/products/{product_id}/restock")
 async def restock_product(
     product_id: int,
@@ -105,10 +140,32 @@ async def restock_product(
         db.refresh(product)
     return RedirectResponse(url="/admin", status_code=303)
 
+# Vymazanie produktu
 @app.post("/admin/products/{product_id}/delete")
 async def delete_product(product_id: int, db: Session = Depends(get_db)):
     product = db.query(Product).filter(Product.id == product_id).first()
     if product:
         db.delete(product)
+        db.commit()
+    return RedirectResponse(url="/admin", status_code=303)
+
+# PRIDANIE KUPÓNU V ADMINI
+@app.post("/admin/coupons/add")
+async def add_coupon(
+    code: str = Form(...),
+    discount_percent: float = Form(...),
+    db: Session = Depends(get_db)
+):
+    new_coupon = Coupon(code=code.upper(), discount_percent=discount_percent)
+    db.add(new_coupon)
+    db.commit()
+    return RedirectResponse(url="/admin", status_code=303)
+
+# VYMAZANIE KUPÓNU
+@app.post("/admin/coupons/{coupon_id}/delete")
+async def delete_coupon(coupon_id: int, db: Session = Depends(get_db)):
+    coupon = db.query(Coupon).filter(Coupon.id == coupon_id).first()
+    if coupon:
+        db.delete(coupon)
         db.commit()
     return RedirectResponse(url="/admin", status_code=303)
