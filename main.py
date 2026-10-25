@@ -3,7 +3,7 @@ from fastapi import FastAPI, Depends, HTTPException, status, Request, Form
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import create_engine, Column, Integer, String, Float
+from sqlalchemy import create_engine, Column, Integer, String, Float, text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
 
@@ -32,7 +32,12 @@ class Product(Base):
     stock = Column(Integer, default=0)
     image_url = Column(String, nullable=True)
 
+# Vytvorenie tabuliek
 Base.metadata.create_all(bind=engine)
+
+# BEZPEČNOSTNÁ POISTKA: Automaticky pridať stĺpec discount_price ak chýba v existujúcej DB
+with engine.begin() as conn:
+    conn.execute(text("ALTER TABLE products ADD COLUMN IF NOT EXISTS discount_price FLOAT;"))
 
 app = FastAPI(title="eshop-7")
 templates = Jinja2Templates(directory="templates")
@@ -44,12 +49,11 @@ def get_db():
     finally:
         db.close()
 
-# 4. VEREJNÝ E-SHOP S TRIEDENÍM (SORT)
+# 4. VEREJNÝ E-SHOP S TRIEDENÍM
 @app.get("/", response_class=HTMLResponse)
 async def read_home(request: Request, sort: str = None, db: Session = Depends(get_db)):
     query = db.query(Product)
     
-    # Logika pre triedenie
     if sort == "price_asc":
         query = query.order_by(Product.price.asc())
     elif sort == "price_desc":
