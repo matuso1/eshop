@@ -14,7 +14,8 @@
         .btn-add { background-color: #007bff; }
         .btn-restock { background-color: #28a745; }
         .btn-delete { background-color: #dc3545; }
-        table { width: 100%; border-collapse: collapse; background: white; border-radius: 8px; overflow: hidden; }
+        .back-link { display: inline-block; margin-bottom: 15px; color: #007bff; text-decoration: none; }
+        table { width: 100%; border-collapse: collapse; background: white; border-radius: 8px; overflow: hidden; margin-bottom: 20px; }
         th, td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }
         th { background-color: #343a40; color: white; }
         .restock-box { display: flex; gap: 5px; align-items: center; }
@@ -22,21 +23,57 @@
 </head>
 <body>
 
-    <h1>Administrácia e-shopu (eshop-7)</h1>
+    <a href="/" class="back-link">&larr; Späť do e-shopu</a>
+    <h1>Administrácia e-shopu</h1>
 
-    <!-- FORMULÁR PRE PRIDANIE PRODUKTU -->
     <div class="card">
         <h2>Pridať nový produkt</h2>
         <form action="/admin/products/add" method="POST">
             <input type="text" name="name" placeholder="Názov produktu" required>
             <input type="number" step="0.01" name="price" placeholder="Cena (€)" required>
+            <input type="number" step="0.01" name="discount_price" placeholder="Zľavnená cena (€ - voliteľné)">
             <input type="number" name="stock" placeholder="Počiatočný sklad (ks)" required>
             <input type="text" name="image_url" placeholder="URL obrázka (voliteľné)">
             <button type="submit" class="btn-add">Pridať produkt</button>
         </form>
     </div>
 
-    <!-- TABUĽKA PRODUKTOV S TLAČIDLOM DOSKLADNIŤ -->
+    <div class="card">
+        <h2>Zľavové kupóny</h2>
+        <form action="/admin/coupons/add" method="POST">
+            <input type="text" name="code" placeholder="Kód kupónu (npr. ZLAVA10)" required>
+            <input type="number" step="0.1" name="discount_percent" placeholder="Zľava v % (npr. 10)" required>
+            <button type="submit" class="btn-add">Pridať kupón</button>
+        </form>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>Kód</th>
+                    <th>Zľava</th>
+                    <th>Akcia</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for coupon in coupons %}
+                <tr>
+                    <td><strong>{{ coupon.code }}</strong></td>
+                    <td>{{ coupon.discount_percent }} %</td>
+                    <td>
+                        <form action="/admin/coupons/{{ coupon.id }}/delete" method="POST" style="margin:0;">
+                            <button type="submit" class="btn-delete" onclick="return confirm('Zmazať kupón?')">Vymazať</button>
+                        </form>
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="3" style="text-align: center;">Žiadne aktívne kupóny.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
     <div class="card">
         <h2>Zoznam produktov a sklad</h2>
         <table>
@@ -44,9 +81,9 @@
                 <tr>
                     <th>ID</th>
                     <th>Názov</th>
-                    <th>Cena</th>
+                    <th>Cena / Zľava</th>
                     <th>Na sklade</th>
-                    <th>Doskladniť (Pridať ks)</th>
+                    <th>Doskladniť</th>
                     <th>Akcia</th>
                 </tr>
             </thead>
@@ -55,10 +92,14 @@
                 <tr>
                     <td>{{ product.id }}</td>
                     <td><strong>{{ product.name }}</strong></td>
-                    <td>{{ "%.2f"|format(product.price) }} €</td>
+                    <td>
+                        {{ "%.2f"|format(product.price) }} €
+                        {% if product.discount_price %}
+                            <br><span style="color: #dc3545;">Zľava: {{ "%.2f"|format(product.discount_price) }} €</span>
+                        {% endif %}
+                    </td>
                     <td><strong>{{ product.stock }} ks</strong></td>
                     <td>
-                        <!-- FORMULÁR A TLAČIDLO DOSKLADNIŤ -->
                         <form action="/admin/products/{{ product.id }}/restock" method="POST" class="restock-box">
                             <input type="number" name="quantity" value="10" min="1" style="width: 60px;" required>
                             <button type="submit" class="btn-restock">Doskladniť</button>
