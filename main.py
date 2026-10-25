@@ -47,19 +47,19 @@ def get_db():
     finally:
         db.close()
 
-# 4. ROUTY PRE VEREREJNÝ E-SHOP
+# 4. ROUTY PRE VEREJNÝ E-SHOP (Opravené poradie pre TemplateResponse)
 @app.get("/", response_class=HTMLResponse)
 async def read_home(request: Request, db: Session = Depends(get_db)):
     products = db.query(Product).all()
-    return templates.TemplateResponse("index.html", {"request": request, "products": products})
+    return templates.TemplateResponse(request, "index.html", {"products": products})
 
 # 5. ADMIN ROUTY
 
-# Zobrazenie Admin panela
+# Zobrazenie Admin panela (Opravené poradie pre TemplateResponse)
 @app.get("/admin", response_class=HTMLResponse)
 async def admin_dashboard(request: Request, db: Session = Depends(get_db)):
     products = db.query(Product).all()
-    return templates.TemplateResponse("admin.html", {"request": request, "products": products})
+    return templates.TemplateResponse(request, "admin.html", {"products": products})
 
 # Pridanie nového produktu
 @app.post("/admin/products/add")
