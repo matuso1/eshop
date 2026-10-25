@@ -8,7 +8,11 @@
         body { font-family: Arial, sans-serif; margin: 0; padding: 20px; background-color: #f8f9fa; }
         header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 2px solid #dee2e6; padding-bottom: 10px; }
         h1 { color: #333; margin: 0; }
-        .admin-link { background: #343a40; color: white; padding: 8px 15px; text-decoration: none; border-radius: 4px; }
+        .nav-links { display: flex; gap: 10px; align-items: center; }
+        .btn { background: #343a40; color: white; padding: 8px 15px; text-decoration: none; border-radius: 4px; border: none; cursor: pointer; }
+        .btn-cart { background: #ffc107; color: #000; font-weight: bold; }
+        .btn-buy { background: #007bff; color: white; width: 100%; margin-top: 10px; padding: 8px; border-radius: 4px; border: none; cursor: pointer; }
+        .btn-buy:disabled { background: #ccc; cursor: not-allowed; }
         .controls { display: flex; justify-content: flex-end; margin-bottom: 20px; gap: 10px; align-items: center; }
         .controls select { padding: 8px; border-radius: 4px; border: 1px solid #ccc; }
         .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 20px; }
@@ -23,10 +27,12 @@
 
     <header>
         <h1>E-shop eshop-7</h1>
-        <a href="/admin" class="admin-link">Do administrácie</a>
+        <div class="nav-links">
+            <a href="/cart" class="btn btn-cart">🛒 Košík</a>
+            <a href="/admin" class="btn">Administrácia</a>
+        </div>
     </header>
 
-    <!-- MENU PRE TRIEDENIE -->
     <div class="controls">
         <label for="sort">Zoradiť produkty:</label>
         <select id="sort" onchange="location.href=this.value">
@@ -38,7 +44,6 @@
         </select>
     </div>
 
-    <!-- ZOZNAM PRODUKTOV -->
     <div class="grid">
         {% for product in products %}
         <div class="card">
@@ -49,8 +54,6 @@
                     <img src="https://via.placeholder.com/250x160?text=Bez+obrazka" alt="Bez obrázka">
                 {% endif %}
                 <h3>{{ product.name }}</h3>
-            </div>
-            <div>
                 <div class="price">
                     {% if product.discount_price %}
                         <span class="old-price">{{ "%.2f"|format(product.price) }} €</span>
@@ -60,6 +63,13 @@
                     {% endif %}
                 </div>
                 <div class="stock">Skladom: <strong>{{ product.stock }} ks</strong></div>
+            </div>
+            <div>
+                <form action="/cart/add/{{ product.id }}" method="POST">
+                    <button type="submit" class="btn-buy" {% if product.stock <= 0 %}disabled{% endif %}>
+                        {% if product.stock > 0 %}Pridať do košíka{% else %}Vypredané{% endif %}
+                    </button>
+                </form>
             </div>
         </div>
         {% else %}
