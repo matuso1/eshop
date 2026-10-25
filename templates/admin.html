@@ -2,105 +2,82 @@
 <html lang="sk">
 <head>
     <meta charset="UTF-8">
-    <title>Admin - Správa produktov a skladu</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Dashboard - eshop-7</title>
     <style>
-        body { font-family: Arial, sans-serif; margin: 40px; background-color: #f4f6f7; color: #333; }
-        .section { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); max-width: 600px; margin-bottom: 20px; }
-        div { margin-bottom: 15px; }
-        label { display: block; margin-bottom: 5px; font-weight: bold; }
-        input { width: 100%; padding: 8px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px; }
-        button { background: #27ae60; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; }
-        button:hover { background: #219653; }
-        .btn-danger { background: #e74c3c; }
-        .btn-danger:hover { background: #c0392b; }
-        .product-row { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #eee; padding: 10px 0; gap: 10px; }
-        .admin-actions { display: flex; gap: 5px; }
-        ul { padding-left: 20px; }
+        body { font-family: Arial, sans-serif; margin: 20px; background-color: #f4f4f9; }
+        h1, h2 { color: #333; }
+        .card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 20px; }
+        form { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 10px; }
+        input[type="text"], input[type="number"] { padding: 8px; border: 1px solid #ccc; border-radius: 4px; }
+        button { padding: 8px 15px; border: none; border-radius: 4px; cursor: pointer; color: white; }
+        .btn-add { background-color: #007bff; }
+        .btn-restock { background-color: #28a745; }
+        .btn-delete { background-color: #dc3545; }
+        table { width: 100%; border-collapse: collapse; background: white; border-radius: 8px; overflow: hidden; }
+        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }
+        th { background-color: #343a40; color: white; }
+        .restock-box { display: flex; gap: 5px; align-items: center; }
     </style>
 </head>
 <body>
-    <h1>Administrácia e-shopu</h1>
 
-    <!-- Formulár na vytvorenie nového produktu -->
-    <div class="section">
-        <h3>Pridať nový produkt</h3>
-        <form action="/admin/add-product" method="POST">
-            <div>
-                <label>Názov produktu:</label>
-                <input type="text" name="name" required>
-            </div>
-            <div>
-                <label>Cena (€):</label>
-                <input type="number" step="0.01" name="price" required>
-            </div>
-            <div>
-                <label>Počet na sklade:</label>
-                <input type="number" name="stock" required>
-            </div>
-            <div>
-                <label>Produktová zľava (%):</label>
-                <input type="number" step="0.01" name="discount" value="0">
-            </div>
-            <div>
-                <label>URL adresa obrázka:</label>
-                <input type="url" name="image_url" placeholder="https://example.com/image.jpg">
-            </div>
-            <button type="submit">Vytvoriť produkt</button>
+    <h1>Administrácia e-shopu (eshop-7)</h1>
+
+    <!-- FORMULÁR PRE PRIDANIE PRODUKTU -->
+    <div class="card">
+        <h2>Pridať nový produkt</h2>
+        <form action="/admin/products/add" method="POST">
+            <input type="text" name="name" placeholder="Názov produktu" required>
+            <input type="number" step="0.01" name="price" placeholder="Cena (€)" required>
+            <input type="number" name="stock" placeholder="Počiatočný sklad (ks)" required>
+            <input type="text" name="image_url" placeholder="URL obrázka (voliteľné)">
+            <button type="submit" class="btn-add">Pridať produkt</button>
         </form>
     </div>
 
-    <!-- Správa skladu (doskladnenie + vymazanie) -->
-    <div class="section">
-        <h3>Správa produktov</h3>
-        {% if products %}
-            {% for prod in products %}
-                <div class="product-row">
-                    <div>
-                        <strong>{{ prod.name }}</strong><br>
-                        <small>Cena: {{ prod.price }} € | Skladom: <strong>{{ prod.stock }} ks</strong> | Zľava: {{ prod.discount }}%</small>
-                    </div>
-                    <div class="admin-actions">
-                        <form action="/admin/restock/{{ prod.id }}" method="POST" style="margin: 0;">
-                            <button type="submit">+1 ks</button>
+    <!-- TABUĽKA PRODUKTOV S TLAČIDLOM DOSKLADNIŤ -->
+    <div class="card">
+        <h2>Zoznam produktov a sklad</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Názov</th>
+                    <th>Cena</th>
+                    <th>Na sklade</th>
+                    <th>Doskladniť (Pridať ks)</th>
+                    <th>Akcia</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for product in products %}
+                <tr>
+                    <td>{{ product.id }}</td>
+                    <td><strong>{{ product.name }}</strong></td>
+                    <td>{{ "%.2f"|format(product.price) }} €</td>
+                    <td><strong>{{ product.stock }} ks</strong></td>
+                    <td>
+                        <!-- FORMULÁR A TLAČIDLO DOSKLADNIŤ -->
+                        <form action="/admin/products/{{ product.id }}/restock" method="POST" class="restock-box">
+                            <input type="number" name="quantity" value="10" min="1" style="width: 60px;" required>
+                            <button type="submit" class="btn-restock">Doskladniť</button>
                         </form>
-                        <form action="/admin/delete/{{ prod.id }}" method="POST" style="margin: 0;" onsubmit="return confirm('Naozaj chcete vymazať tento produkt?');">
-                            <button type="submit" class="btn-danger">Zmazať</button>
+                    </td>
+                    <td>
+                        <form action="/admin/products/{{ product.id }}/delete" method="POST" style="margin:0;">
+                            <button type="submit" class="btn-delete" onclick="return confirm('Naozaj zmazať?')">Vymazať</button>
                         </form>
-                    </div>
-                </div>
-            {% endfor %}
-        {% else %}
-            <p>Žiadne produkty v sklade. Vytvorte ich vyššie.</p>
-        {% endif %}
-    </div>
-
-    <!-- Vytvorenie kupónu -->
-    <div class="section">
-        <h3>Vytvoriť zľavový kupón</h3>
-        <form action="/admin/add-coupon" method="POST">
-            <div>
-                <label>Kód kupónu:</label>
-                <input type="text" name="code" placeholder="Zadajte kód" required>
-            </div>
-            <div>
-                <label>Zľava (%):</label>
-                <input type="number" step="0.01" name="discount_percent" placeholder="Zadajte percento" required>
-            </div>
-            <button type="submit" style="background: #8e44ad;">Vytvoriť kupón</button>
-        </form>
-
-        <h4 style="margin-top: 20px;">Aktívne kupóny:</h4>
-        <ul>
-            {% if coupons %}
-                {% for coupon in coupons %}
-                    <li><strong>{{ coupon.code }}</strong>: -{{ coupon.discount_percent }}%</li>
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="6" style="text-align: center;">Žiadne produkty v databáze.</td>
+                </tr>
                 {% endfor %}
-            {% else %}
-                <li>Žiadne aktívne kupóny.</li>
-            {% endif %}
-        </ul>
+            </tbody>
+        </table>
     </div>
 
-    <a href="/" style="text-decoration: none; color: #2980b9;">← Späť na hlavnú stránku e-shopu</a>
 </body>
 </html>
