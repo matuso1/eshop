@@ -66,7 +66,6 @@ def get_cart_from_cookie(request: Request) -> dict:
             return {}
     return {}
 
-# Pomocná funkcia na overenie admina cez Cookie
 def verify_admin_cookie(request: Request):
     if request.cookies.get("admin_logged") != "true":
         raise HTTPException(status_code=303, headers={"Location": "/admin/login"})
@@ -161,19 +160,51 @@ async def remove_from_cart(request: Request, product_id: int):
     return response
 
 
-# --- ADMIN PRIHLÁSENIE ---
+# --- ADMIN PRIHLÁSENIE (Všetko priamo v kóde, netreba login.html) ---
 
 @app.get("/admin/login", response_class=HTMLResponse)
-async def admin_login_page(request: Request):
-    return templates.TemplateResponse(request, "login.html", {"request": request, "error": None})
+async def admin_login_page(error: str = None):
+    error_html = f'<div style="color: #dc3545; font-size: 14px; text-align: center; margin-bottom: 10px;">{error}</div>' if error else ''
+    html_content = f"""
+    <!DOCTYPE html>
+    <html lang="sk">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Prihlásenie do adminu</title>
+        <style>
+            body {{ font-family: Arial, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; background-color: #f4f4f9; margin: 0; }}
+            .login-card {{ background: white; padding: 30px; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); width: 300px; }}
+            h2 {{ margin-top: 0; color: #333; text-align: center; }}
+            input {{ width: 100%; padding: 10px; margin: 10px 0; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }}
+            button {{ width: 100%; padding: 10px; background-color: #007bff; border: none; border-radius: 4px; color: white; font-weight: bold; cursor: pointer; }}
+            button:hover {{ background-color: #0056b3; }}
+            .back {{ display: block; text-align: center; margin-top: 15px; color: #666; text-decoration: none; font-size: 14px; }}
+        </style>
+    </head>
+    <body>
+        <div class="login-card">
+            <h2>Admin Prihlásenie</h2>
+            {error_html}
+            <form action="/admin/login" method="POST">
+                <input type="text" name="username" placeholder="Meno (admin)" required>
+                <input type="password" name="password" placeholder="Heslo" required>
+                <button type="submit">Prihlásiť sa</button>
+            </form>
+            <a href="/" class="back">&larr; Späť do e-shopu</a>
+        </div>
+    </body>
+    </html>
+    """
+    return HTMLResponse(content=html_content)
 
 @app.post("/admin/login")
-async def admin_login_action(request: Request, username: str = Form(...), password: str = Form(...)):
+async def admin_login_action(username: str = Form(...), password: str = Form(...)):
     if secrets.compare_digest(username, ADMIN_USER) and secrets.compare_digest(password, ADMIN_PASS):
         response = RedirectResponse(url="/admin", status_code=303)
         response.set_cookie(key="admin_logged", value="true", httponly=True)
         return response
-    return templates.TemplateResponse(request, "login.html", {"request": request, "error": "Nesprávne meno alebo heslo!"})
+    return await admin_login_page(error="Nesprávne meno alebo heslo!")
 
 @app.get("/admin/logout")
 async def admin_logout():
@@ -182,7 +213,7 @@ async def admin_logout():
     return response
 
 
-# --- ADMIN AKCIE (Chránené cookie) ---
+# --- ADMIN AKCIE ---
 
 @app.get("/admin", response_class=HTMLResponse)
 @app.get("/admin/", response_class=HTMLResponse)
@@ -269,20 +300,4 @@ async def delete_coupon(
     coupon_id: int, 
     db: Session = Depends(get_db)
 ):
-    verify_admin_cookie(request)
-    coupon = db.query(Coupon).filter(Coupon.id == coupon_id).first()
-    if coupon:
-        db.delete(coupon)
-        db.commit()
-    return RedirectResponse(url="/admin", status_code=303)
-
-@app.post("/admin/delete-all")
-async def delete_all_data(
-    request: Request,
-    db: Session = Depends(get_db)
-):
-    verify_admin_cookie(request)
-    db.query(Product).delete()
-    db.query(Coupon).delete()
-    db.commit()
-    return RedirectResponse(url="/admin", status_code=303)
+    verify_admin_cookie
