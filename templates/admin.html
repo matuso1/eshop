@@ -14,18 +14,29 @@
         .btn-add { background-color: #007bff; }
         .btn-restock { background-color: #28a745; }
         .btn-delete { background-color: #dc3545; }
+        .btn-danger-all { background-color: #a71d2a; font-weight: bold; margin-bottom: 15px; }
         .back-link { display: inline-block; margin-bottom: 15px; color: #007bff; text-decoration: none; }
         table { width: 100%; border-collapse: collapse; background: white; border-radius: 8px; overflow: hidden; margin-bottom: 20px; }
         th, td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }
         th { background-color: #343a40; color: white; }
-        .restock-box { display: flex; gap: 5px; align-items: center; }
+        .restock-box { display: flex; gap: 5px; align-items: center; margin: 0; }
+        .header-row { display: flex; justify-content: space-between; align-items: center; }
     </style>
 </head>
 <body>
 
     <a href="/" class="back-link">&larr; Späť do e-shopu</a>
-    <h1>Administrácia e-shopu</h1>
+    
+    <div class="header-row">
+        <h1>Administrácia e-shopu</h1>
+        <!-- TLAČIDLO ZMAZAŤ VŠETKO -->
+        <form action="/admin/delete-all" method="POST" style="margin: 0;">
+            <button type="submit" class="btn btn-danger-all" onclick="return confirm('⚠️ POZOR! Naozaj chceš vymazať ÚPLNE VŠETKY produkty aj kupóny z databázy?')">🗑️ Zmazať všetko (Reset)</button>
+        </form>
+    </div>
+    <br>
 
+    <!-- FORMULÁR PRE PRIDANIE PRODUKTU -->
     <div class="card">
         <h2>Pridať nový produkt</h2>
         <form action="/admin/products/add" method="POST">
@@ -38,6 +49,7 @@
         </form>
     </div>
 
+    <!-- SPRÁVA KUPÓNOV -->
     <div class="card">
         <h2>Zľavové kupóny</h2>
         <form action="/admin/coupons/add" method="POST">
@@ -61,7 +73,7 @@
                     <td>{{ coupon.discount_percent }} %</td>
                     <td>
                         <form action="/admin/coupons/{{ coupon.id }}/delete" method="POST" style="margin:0;">
-                            <button type="submit" class="btn-delete" onclick="return confirm('Zmazať kupón?')">Vymazať</button>
+                            <button type="submit" class="btn-delete" onclick="return confirm('Naozaj zmazať kupón?')">Vymazať</button>
                         </form>
                     </td>
                 </tr>
@@ -74,6 +86,7 @@
         </table>
     </div>
 
+    <!-- TABUĽKA PRODUKTOV S DOSKLADNENÍM -->
     <div class="card">
         <h2>Zoznam produktov a sklad</h2>
         <table>
@@ -107,7 +120,7 @@
                     </td>
                     <td>
                         <form action="/admin/products/{{ product.id }}/delete" method="POST" style="margin:0;">
-                            <button type="submit" class="btn-delete" onclick="return confirm('Naozaj zmazať?')">Vymazať</button>
+                            <button type="submit" class="btn-delete" onclick="return confirm('Naozaj zmazať tento produkt?')">Vymazať</button>
                         </form>
                     </td>
                 </tr>
