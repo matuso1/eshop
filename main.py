@@ -168,3 +168,6 @@ async def remove_from_cart(request: Request, product_id: int):
     cart = get_cart_from_cookie(request)
     str_id = str(product_id)
     if str_id in cart:
+        del cart[str_id]
+
+    response = RedirectResponse(url
