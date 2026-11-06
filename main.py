@@ -170,4 +170,53 @@ async def remove_from_cart(request: Request, product_id: int):
     if str_id in cart:
         del cart[str_id]
 
-    response = RedirectResponse(url
+    response = RedirectResponse(url="/cart", status_code=303)
+    response.set_cookie(key="cart", value=json.dumps(cart))
+    return response
+
+
+# -------------------------------------------------------------
+# 4. ADMIN ROUTY (Chránené heslom cez verify_admin)
+# -------------------------------------------------------------
+
+@app.get("/admin", response_class=HTMLResponse)
+async def admin_dashboard(request: Request, db: Session = Depends(get_db), admin: str = Depends(verify_admin)):
+    products = db.query(Product).all()
+    coupons = db.query(Coupon).all()
+    return templates.TemplateResponse(request, "admin.html", {
+        "request": request, 
+        "products": products,
+        "coupons": coupons
+    })
+
+@app.post("/admin/products/add")
+async def add_product(
+    name: str = Form(...),
+    price: float = Form(...),
+    discount_price: float = Form(None),
+    stock: int = Form(...),
+    image_url: str = Form(None),
+    db: Session = Depends(get_db),
+    admin: str = Depends(verify_admin)
+):
+    new_product = Product(
+        name=name, 
+        price=price, 
+        discount_price=discount_price if discount_price else None, 
+        stock=stock, 
+        image_url=image_url
+    )
+    db.add(new_product)
+    db.commit()
+    return RedirectResponse(url="/admin", status_code=303)
+
+@app.post("/admin/products/{product_id}/restock")
+async def restock_product(
+    product_id: int,
+    quantity: int = Form(...),
+    db: Session = Depends(get_db),
+    admin: str = Depends(verify_admin)
+):
+    product = db.query(Product).filter(Product.id == product_id).first()
+    if product:
+        product.stock = (product.stock or 0) + quantity
