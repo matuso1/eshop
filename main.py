@@ -147,4 +147,40 @@ async def view_cart(request: Request, coupon_code: str = None, db: Session = Dep
 @app.post("/cart/add/{product_id}")
 async def add_to_cart_action(request: Request, product_id: int, db: Session = Depends(get_db)):
     product = db.query(Product).filter(Product.id == product_id).first()
-    if not
+    if not product or product.stock <= 0:
+        return RedirectResponse(url="/", status_code=303)
+
+    cart = get_cart_from_cookie(request)
+    str_id = str(product_id)
+    cart[str_id] = cart.get(str_id, 0) + 1
+
+    response = RedirectResponse(url="/", status_code=303)
+    response.set_cookie(key="cart", value=json.dumps(cart))
+    return response
+
+@app.post("/cart/remove/{product_id}")
+async def remove_from_cart(request: Request, product_id: int):
+    cart = get_cart_from_cookie(request)
+    str_id = str(product_id)
+    if str_id in cart:
+        del cart[str_id]
+
+    response = RedirectResponse(url="/cart", status_code=303)
+    response.set_cookie(key="cart", value=json.dumps(cart))
+    return response
+
+
+# --- ADMIN ROUTY ---
+
+@app.get("/admin", response_class=HTMLResponse)
+@app.get("/admin/", response_class=HTMLResponse)
+async def admin_dashboard(request: Request, db: Session = Depends(get_db), admin: str = Depends(verify_admin)):
+    products = db.query(Product).all()
+    coupons = db.query(Coupon).all()
+    return templates.TemplateResponse(request, "admin.html", {
+        "request": request, 
+        "products": products,
+        "coupons": coupons
+    })
+
+@app.post
