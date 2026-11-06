@@ -20,7 +20,7 @@ engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
-# Admin prihlasovacie údaje (načítajú sa z Render Environment Variables alebo použijú predvolené)
+# Admin prihlasovacie údaje
 ADMIN_USER = os.getenv("ADMIN_USER", "admin")
 ADMIN_PASS = os.getenv("ADMIN_PASS", "Matus123.")
 
@@ -200,44 +200,4 @@ async def add_product(
     admin: str = Depends(verify_admin)
 ):
     new_product = Product(
-        name=name, 
-        price=price, 
-        discount_price=discount_price if discount_price else None, 
-        stock=stock, 
-        image_url=image_url
-    )
-    db.add(new_product)
-    db.commit()
-    return RedirectResponse(url="/admin", status_code=303)
-
-@app.post("/admin/products/{product_id}/restock")
-async def restock_product(
-    product_id: int,
-    quantity: int = Form(...),
-    db: Session = Depends(get_db),
-    admin: str = Depends(verify_admin)
-):
-    product = db.query(Product).filter(Product.id == product_id).first()
-    if product:
-        product.stock = (product.stock or 0) + quantity
-        db.commit()
-        db.refresh(product)
-    return RedirectResponse(url="/admin", status_code=303)
-
-@app.post("/admin/products/{product_id}/delete")
-async def delete_product(
-    product_id: int, 
-    db: Session = Depends(get_db),
-    admin: str = Depends(verify_admin)
-):
-    product = db.query(Product).filter(Product.id == product_id).first()
-    if product:
-        db.delete(product)
-        db.commit()
-    return RedirectResponse(url="/admin", status_code=303)
-
-@app.post("/admin/coupons/add")
-async def add_coupon(
-    code: str = Form(...),
-    discount_percent: float = Form(...),
-    db: Session = Depends(get
+        name=name
