@@ -160,7 +160,7 @@ async def remove_from_cart(request: Request, product_id: int):
     return response
 
 
-# --- ADMIN PRIHLÁSENIE (Všetko priamo v kóde, netreba login.html) ---
+# --- ADMIN PRIHLÁSENIE ---
 
 @app.get("/admin/login", response_class=HTMLResponse)
 async def admin_login_page(error: str = None):
@@ -300,4 +300,20 @@ async def delete_coupon(
     coupon_id: int, 
     db: Session = Depends(get_db)
 ):
-    verify_admin_cookie
+    verify_admin_cookie(request)
+    coupon = db.query(Coupon).filter(Coupon.id == coupon_id).first()
+    if coupon:
+        db.delete(coupon)
+        db.commit()
+    return RedirectResponse(url="/admin", status_code=303)
+
+@app.post("/admin/delete-all")
+async def delete_all_data(
+    request: Request,
+    db: Session = Depends(get_db)
+):
+    verify_admin_cookie(request)
+    db.query(Product).delete()
+    db.query(Coupon).delete()
+    db.commit()
+    return RedirectResponse(url="/admin", status_code=303)
