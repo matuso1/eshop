@@ -183,4 +183,14 @@ async def admin_dashboard(request: Request, db: Session = Depends(get_db), admin
         "coupons": coupons
     })
 
-@app.post
+@app.post("/admin/products/add")
+async def add_product(
+    name: str = Form(...),
+    price: float = Form(...),
+    discount_price: float = Form(None),
+    stock: int = Form(...),
+    image_url: str = Form(None),
+    db: Session = Depends(get_db),
+    admin: str = Depends(verify_admin)
+):
+    new_product
