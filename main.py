@@ -1,14 +1,16 @@
 import os
 import json
+import secrets
 from fastapi import FastAPI, Depends, HTTPException, status, Request, Form
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from sqlalchemy import create_engine, Column, Integer, String, Float, text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
 
-# Databázová konfigurácia
+# 1. Databázová konfigurácia
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./eshop.db")
 
 if DATABASE_URL.startswith("postgres://"):
@@ -18,11 +20,25 @@ engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
-# Admin prihlasovacie údaje
+# Admin prihlasovacie údaje (načítajú sa z Render Environment Variables alebo použijú predvolené)
 ADMIN_USER = os.getenv("ADMIN_USER", "admin")
 ADMIN_PASS = os.getenv("ADMIN_PASS", "Matus123.")
 
-# Databázové modely
+security = HTTPBasic()
+
+# Overenie admina (zabezpečenie administrácie)
+def verify_admin(credentials: HTTPBasicCredentials = Depends(security)):
+    correct_username = secrets.compare_digest(credentials.username, ADMIN_USER)
+    correct_password = secrets.compare_digest(credentials.password, ADMIN_PASS)
+    if not (correct_username and correct_password):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Nesprávne meno alebo heslo",
+            headers={"WWW-Authenticate": "Basic"},
+        )
+    return credentials.username
+
+# 2. Databázové modely (Produkty + Kupóny)
 class Product(Base):
     __tablename__ = "products"
 
@@ -67,7 +83,9 @@ def get_cart_from_cookie(request: Request) -> dict:
             return {}
     return {}
 
-# --- VEREJNÝ E-SHOP ---
+# -------------------------------------------------------------
+# 3. VEREJNÝ E-SHOP (Produkty, Triedenie, Košík, Kupóny)
+# -------------------------------------------------------------
 
 @app.get("/", response_class=HTMLResponse)
 async def read_home(request: Request, sort: str = None, db: Session = Depends(get_db)):
@@ -157,10 +175,12 @@ async def remove_from_cart(request: Request, product_id: int):
     return response
 
 
-# --- ADMIN ROUTY ---
+# -------------------------------------------------------------
+# 4. ADMIN ROUTY (Chránené heslom cez verify_admin)
+# -------------------------------------------------------------
 
 @app.get("/admin", response_class=HTMLResponse)
-async def admin_dashboard(request: Request, db: Session = Depends(get_db)):
+async def admin_dashboard(request: Request, db: Session = Depends(get_db), admin: str = Depends(verify_admin)):
     products = db.query(Product).all()
     coupons = db.query(Coupon).all()
     return templates.TemplateResponse(request, "admin.html", {
@@ -176,7 +196,8 @@ async def add_product(
     discount_price: float = Form(None),
     stock: int = Form(...),
     image_url: str = Form(None),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    admin: str = Depends(verify_admin)
 ):
     new_product = Product(
         name=name, 
@@ -193,7 +214,8 @@ async def add_product(
 async def restock_product(
     product_id: int,
     quantity: int = Form(...),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    admin: str = Depends(verify_admin)
 ):
     product = db.query(Product).filter(Product.id == product_id).first()
     if product:
@@ -203,7 +225,11 @@ async def restock_product(
     return RedirectResponse(url="/admin", status_code=303)
 
 @app.post("/admin/products/{product_id}/delete")
-async def delete_product(product_id: int, db: Session = Depends(get_db)):
+async def delete_product(
+    product_id: int, 
+    db: Session = Depends(get_db),
+    admin: str = Depends(verify_admin)
+):
     product = db.query(Product).filter(Product.id == product_id).first()
     if product:
         db.delete(product)
@@ -214,17 +240,4 @@ async def delete_product(product_id: int, db: Session = Depends(get_db)):
 async def add_coupon(
     code: str = Form(...),
     discount_percent: float = Form(...),
-    db: Session = Depends(get_db)
-):
-    new_coupon = Coupon(code=code.upper(), discount_percent=discount_percent)
-    db.add(new_coupon)
-    db.commit()
-    return RedirectResponse(url="/admin", status_code=303)
-
-@app.post("/admin/coupons/{coupon_id}/delete")
-async def delete_coupon(coupon_id: int, db: Session = Depends(get_db)):
-    coupon = db.query(Coupon).filter(Coupon.id == coupon_id).first()
-    if coupon:
-        db.delete(coupon)
-        db.commit()
-    return RedirectResponse(url="/admin", status_code=303)
+    db: Session = Depends(get
