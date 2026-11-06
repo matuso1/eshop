@@ -1,11 +1,10 @@
 import os
 import json
 import secrets
-from fastapi import FastAPI, Depends, HTTPException, status, Request, Form
+from fastapi import FastAPI, Depends, HTTPException, status, Request, Form, Response
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from sqlalchemy import create_engine, Column, Integer, String, Float, text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
@@ -23,19 +22,6 @@ Base = declarative_base()
 # Admin prihlasovacie údaje
 ADMIN_USER = os.getenv("ADMIN_USER", "admin")
 ADMIN_PASS = os.getenv("ADMIN_PASS", "Matus123.")
-
-security = HTTPBasic()
-
-def verify_admin(credentials: HTTPBasicCredentials = Depends(security)):
-    correct_username = secrets.compare_digest(credentials.username, ADMIN_USER)
-    correct_password = secrets.compare_digest(credentials.password, ADMIN_PASS)
-    if not (correct_username and correct_password):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Nesprávne meno alebo heslo",
-            headers={"WWW-Authenticate": "Basic"},
-        )
-    return credentials.username
 
 # Databázové modely
 class Product(Base):
@@ -79,6 +65,11 @@ def get_cart_from_cookie(request: Request) -> dict:
         except:
             return {}
     return {}
+
+# Pomocná funkcia na overenie admina cez Cookie
+def verify_admin_cookie(request: Request):
+    if request.cookies.get("admin_logged") != "true":
+        raise HTTPException(status_code=303, headers={"Location": "/admin/login"})
 
 # --- VEREJNÝ E-SHOP ---
 
@@ -170,11 +161,37 @@ async def remove_from_cart(request: Request, product_id: int):
     return response
 
 
-# --- ADMIN ROUTY ---
+# --- ADMIN PRIHLÁSENIE ---
+
+@app.get("/admin/login", response_class=HTMLResponse)
+async def admin_login_page(request: Request):
+    return templates.TemplateResponse(request, "login.html", {"request": request, "error": None})
+
+@app.post("/admin/login")
+async def admin_login_action(request: Request, username: str = Form(...), password: str = Form(...)):
+    if secrets.compare_digest(username, ADMIN_USER) and secrets.compare_digest(password, ADMIN_PASS):
+        response = RedirectResponse(url="/admin", status_code=303)
+        response.set_cookie(key="admin_logged", value="true", httponly=True)
+        return response
+    return templates.TemplateResponse(request, "login.html", {"request": request, "error": "Nesprávne meno alebo heslo!"})
+
+@app.get("/admin/logout")
+async def admin_logout():
+    response = RedirectResponse(url="/admin/login", status_code=303)
+    response.delete_cookie(key="admin_logged")
+    return response
+
+
+# --- ADMIN AKCIE (Chránené cookie) ---
 
 @app.get("/admin", response_class=HTMLResponse)
 @app.get("/admin/", response_class=HTMLResponse)
-async def admin_dashboard(request: Request, db: Session = Depends(get_db), admin: str = Depends(verify_admin)):
+async def admin_dashboard(request: Request, db: Session = Depends(get_db)):
+    try:
+        verify_admin_cookie(request)
+    except HTTPException:
+        return RedirectResponse(url="/admin/login", status_code=303)
+        
     products = db.query(Product).all()
     coupons = db.query(Coupon).all()
     return templates.TemplateResponse(request, "admin.html", {
@@ -185,12 +202,87 @@ async def admin_dashboard(request: Request, db: Session = Depends(get_db), admin
 
 @app.post("/admin/products/add")
 async def add_product(
+    request: Request,
     name: str = Form(...),
     price: float = Form(...),
     discount_price: float = Form(None),
     stock: int = Form(...),
     image_url: str = Form(None),
-    db: Session = Depends(get_db),
-    admin: str = Depends(verify_admin)
+    db: Session = Depends(get_db)
 ):
-    new_product
+    verify_admin_cookie(request)
+    new_product = Product(
+        name=name, 
+        price=price, 
+        discount_price=discount_price if discount_price else None, 
+        stock=stock, 
+        image_url=image_url
+    )
+    db.add(new_product)
+    db.commit()
+    return RedirectResponse(url="/admin", status_code=303)
+
+@app.post("/admin/products/{product_id}/restock")
+async def restock_product(
+    request: Request,
+    product_id: int,
+    quantity: int = Form(...),
+    db: Session = Depends(get_db)
+):
+    verify_admin_cookie(request)
+    product = db.query(Product).filter(Product.id == product_id).first()
+    if product:
+        product.stock = (product.stock or 0) + quantity
+        db.commit()
+        db.refresh(product)
+    return RedirectResponse(url="/admin", status_code=303)
+
+@app.post("/admin/products/{product_id}/delete")
+async def delete_product(
+    request: Request,
+    product_id: int, 
+    db: Session = Depends(get_db)
+):
+    verify_admin_cookie(request)
+    product = db.query(Product).filter(Product.id == product_id).first()
+    if product:
+        db.delete(product)
+        db.commit()
+    return RedirectResponse(url="/admin", status_code=303)
+
+@app.post("/admin/coupons/add")
+async def add_coupon(
+    request: Request,
+    code: str = Form(...),
+    discount_percent: float = Form(...),
+    db: Session = Depends(get_db)
+):
+    verify_admin_cookie(request)
+    new_coupon = Coupon(code=code.upper(), discount_percent=discount_percent)
+    db.add(new_coupon)
+    db.commit()
+    return RedirectResponse(url="/admin", status_code=303)
+
+@app.post("/admin/coupons/{coupon_id}/delete")
+async def delete_coupon(
+    request: Request,
+    coupon_id: int, 
+    db: Session = Depends(get_db)
+):
+    verify_admin_cookie(request)
+    coupon = db.query(Coupon).filter(Coupon.id == coupon_id).first()
+    if coupon:
+        db.delete(coupon)
+        db.commit()
+    return RedirectResponse(url="/admin", status_code=303)
+
+@app.post("/admin/delete-all")
+async def delete_all_data(
+    request: Request,
+    db: Session = Depends(get_db)
+):
+    verify_admin_cookie(request)
+    db.query(Product).delete()
+    db.query(Coupon).delete()
+    db.commit()
+    return RedirectResponse(url="/admin", status_code=303)
