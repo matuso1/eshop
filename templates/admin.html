@@ -102,7 +102,7 @@
                     <td>{{ product.id }}</td>
                     <td><strong>{{ product.name }}</strong></td>
                     <td>
-                        {{ "%.2f"|format(product.price) € }}
+                        {{ "%.2f"|format(product.price) }} €
                         {% if product.discount_price %}
                             <br><span style="color: #dc3545;">Zľava: {{ "%.2f"|format(product.discount_price) }} €</span>
                         {% endif %}
